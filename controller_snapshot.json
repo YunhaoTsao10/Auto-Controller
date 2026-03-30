@@ -1,0 +1,413 @@
+{
+  "spec": {
+    "scenario": "Model a simple pendulum and design a controller around theta = 2.5 rad.\nPlant:\nNonlinear dynamics: m L^2 \u03b8\u0308 + b \u03b8\u0307 + m g L sin(\u03b8) = u\nParameters: m = 1 kg, L = 1 m, g = 9.81 m/s^2, b = 0.05\nOperating point: \u03b80 = 2.5 rad, \u03b8\u03070 = 0, u0 = m g L sin(\u03b80)\nLinearized about \u03b8 = 2.5 rad:\nLet x = [\u03b4\u03b8, \u03b4\u03b8\u0307]^T, \u03b4u = u - u0\n\u03b4x\u0307 = A \u03b4x + B \u03b4u\nA = [[0, 1], [-(g/L) cos(2.5), -b/(m L^2)]], B = [[0], [1/(m L^2)]]",
+    "constraints": [
+      {
+        "name": "equilibrium_angle",
+        "value": "2.5",
+        "unit": "rad",
+        "kind": "hard"
+      },
+      {
+        "name": "mass",
+        "value": "1",
+        "unit": "kg",
+        "kind": "hard"
+      },
+      {
+        "name": "length",
+        "value": "1",
+        "unit": "m",
+        "kind": "hard"
+      },
+      {
+        "name": "gravity",
+        "value": "9.81",
+        "unit": "m/s^2",
+        "kind": "hard"
+      },
+      {
+        "name": "damping",
+        "value": "0.05",
+        "unit": "Nms/rad",
+        "kind": "hard"
+      }
+    ],
+    "urdf": null,
+    "design_targets": {
+      "dt_s": "0.01",
+      "settle_time_s": "2",
+      "overshoot_pct": "10",
+      "torque_limit_nm": "5",
+      "theta_range_rad": "[-pi, pi]"
+    }
+  },
+  "strategy": {
+    "family": "LQR",
+    "reason": "State-feedback around a specified operating point is well matched to local linearization of the pendulum at \u03b8 = 2.5 rad."
+  },
+  "model": {
+    "model_name": "Simple Pendulum",
+    "model_type": "nonlinear_ode",
+    "states": [
+      {
+        "name": "theta",
+        "meaning": "pendulum angle measured from the downward vertical",
+        "unit": "rad"
+      },
+      {
+        "name": "omega",
+        "meaning": "pendulum angular velocity",
+        "unit": "rad/s"
+      }
+    ],
+    "inputs": [
+      {
+        "name": "u",
+        "meaning": "applied pivot torque",
+        "unit": "N\u00b7m"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "theta",
+        "meaning": "pendulum angle",
+        "unit": "rad"
+      },
+      {
+        "name": "omega",
+        "meaning": "pendulum angular velocity",
+        "unit": "rad/s"
+      }
+    ],
+    "parameters": [
+      {
+        "name": "m",
+        "meaning": "pendulum point mass",
+        "unit": "kg",
+        "value": "1",
+        "notes": "hard constraint"
+      },
+      {
+        "name": "L",
+        "meaning": "pendulum length",
+        "unit": "m",
+        "value": "1",
+        "notes": "hard constraint"
+      },
+      {
+        "name": "g",
+        "meaning": "gravitational acceleration",
+        "unit": "m/s^2",
+        "value": "9.81",
+        "notes": "hard constraint"
+      },
+      {
+        "name": "b",
+        "meaning": "viscous rotational damping coefficient",
+        "unit": "N\u00b7m\u00b7s/rad",
+        "value": "0.05",
+        "notes": "hard constraint"
+      },
+      {
+        "name": "theta_eq",
+        "meaning": "operating-point pendulum angle",
+        "unit": "rad",
+        "value": "2.5",
+        "notes": "requested equilibrium angle"
+      },
+      {
+        "name": "u_eq",
+        "meaning": "torque required to hold the operating point",
+        "unit": "N\u00b7m",
+        "value": "5.871277622723235",
+        "notes": "u_eq = m g L sin(theta_eq)"
+      }
+    ],
+    "assumptions": [
+      "Planar simple pendulum with point mass m at distance L from the pivot.",
+      "Angle theta is measured from the downward vertical, consistent with the term m g L sin(theta).",
+      "Input u is a directly applied torque at the pivot.",
+      "Rigid massless rod, no actuator dynamics, no Coulomb friction.",
+      "Continuous-time model used for local LQR design around the specified equilibrium."
+    ],
+    "dynamics": [
+      {
+        "lhs": "theta_dot",
+        "rhs": "omega",
+        "notes": "kinematic relation"
+      },
+      {
+        "lhs": "omega_dot",
+        "rhs": "(1/(m*L^2))*(u - b*omega - m*g*L*sin(theta))",
+        "notes": "from m L^2 theta_ddot + b theta_dot + m g L sin(theta) = u"
+      }
+    ],
+    "output_equations": [
+      {
+        "lhs": "y1",
+        "rhs": "theta",
+        "notes": "output angle"
+      },
+      {
+        "lhs": "y2",
+        "rhs": "omega",
+        "notes": "output angular velocity"
+      }
+    ],
+    "operating_point": {
+      "name": "theta_2p5_eq",
+      "kind": "equilibrium",
+      "state_values": [
+        {
+          "name": "theta",
+          "value": 2.5,
+          "unit": "rad",
+          "notes": "specified operating angle"
+        },
+        {
+          "name": "omega",
+          "value": 0.0,
+          "unit": "rad/s",
+          "notes": "equilibrium angular velocity"
+        }
+      ],
+      "input_values": [
+        {
+          "name": "u",
+          "value": 5.871277622723235,
+          "unit": "N\u00b7m",
+          "notes": "required holding torque u0 = m g L sin(2.5)"
+        }
+      ],
+      "output_values": [
+        {
+          "name": "theta",
+          "value": 2.5,
+          "unit": "rad",
+          "notes": "equilibrium output"
+        },
+        {
+          "name": "omega",
+          "value": 0.0,
+          "unit": "rad/s",
+          "notes": "equilibrium output"
+        }
+      ],
+      "assumptions": [
+        "Exact equilibrium for the stated nonlinear model."
+      ],
+      "residual_description": "At the operating point, theta_dot = 0 and omega_dot = (u0 - m g L sin(theta0))/(m L^2) = 0 with b*omega0 = 0, so the residual is zero."
+    },
+    "local_linear_model": {
+      "valid_near": "theta_2p5_eq",
+      "state_order": [
+        "theta",
+        "omega"
+      ],
+      "input_order": [
+        "u"
+      ],
+      "output_order": [
+        "theta",
+        "omega"
+      ],
+      "state_definition": "Deviation states are delta_x = [delta_theta, delta_omega]^T = [theta - 2.5, omega - 0]^T.",
+      "input_definition": "Deviation input is delta_u = u - 5.871277622723235.",
+      "output_definition": "Deviation output is delta_y = [theta - 2.5, omega - 0]^T.",
+      "A": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          [
+            0.0,
+            1.0
+          ],
+          [
+            7.858300205277272,
+            -0.05
+          ]
+        ]
+      },
+      "B": {
+        "rows": 2,
+        "cols": 1,
+        "data": [
+          [
+            0.0
+          ],
+          [
+            1.0
+          ]
+        ]
+      },
+      "C": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          [
+            1.0,
+            0.0
+          ],
+          [
+            0.0,
+            1.0
+          ]
+        ]
+      },
+      "D": {
+        "rows": 2,
+        "cols": 1,
+        "data": [
+          [
+            0.0
+          ],
+          [
+            0.0
+          ]
+        ]
+      },
+      "notes": [
+        "Linearization of the nonlinear pendulum dynamics about theta0 = 2.5 rad, omega0 = 0, u0 = m g L sin(theta0).",
+        "Since cos(2.5) < 0, the term -(g/L) cos(2.5) is positive: 7.858300205277272.",
+        "This equilibrium is unstable in open loop because it lies beyond pi/2 from the downward configuration."
+      ],
+      "assumptions": [
+        "First-order Taylor linearization in deviation coordinates.",
+        "Parameters fixed at m = 1 kg, L = 1 m, g = 9.81 m/s^2, b = 0.05 N\u00b7m\u00b7s/rad."
+      ],
+      "sanity_checks": [
+        "A and B correspond to deviation dynamics delta_x_dot = A delta_x + B delta_u.",
+        "State order [theta, omega] matches the declared state names.",
+        "Input order [u] matches the declared input name.",
+        "Operating point used in the linearization matches operating_point.name = theta_2p5_eq."
+      ]
+    },
+    "ode": [
+      "theta_dot = omega",
+      "omega_dot = (u - 0.05*omega - 9.81*sin(theta))",
+      "with m = 1, L = 1 so omega_dot = u - 0.05*omega - 9.81*sin(theta)"
+    ],
+    "state_space": [
+      "Operating point: theta0 = 2.5 rad, omega0 = 0 rad/s, u0 = 9.81*sin(2.5) = 5.871277622723235 N\u00b7m",
+      "Deviation coordinates: delta_theta = theta - 2.5, delta_omega = omega, delta_u = u - 5.871277622723235",
+      "delta_x_dot = A delta_x + B delta_u",
+      "A = [[0, 1], [7.858300205277272, -0.05]]",
+      "B = [[0], [1]]",
+      "C = [[1, 0], [0, 1]]",
+      "D = [[0], [0]]"
+    ],
+    "notes": [
+      "The nonlinear model is preserved exactly as provided.",
+      "The local linear model is suitable for LQR synthesis using u = u0 + delta_u with delta_u = -K delta_x.",
+      "Numerically, sin(2.5) = 0.5984721441039565 and cos(2.5) = -0.8011436155469337."
+    ]
+  },
+  "controller": {
+    "controller_type": "LQR",
+    "controller_name": "local_lqr_controller",
+    "required_signals": [
+      "theta",
+      "omega"
+    ],
+    "control_law": [
+      "delta_x = [theta, omega]^T (deviation-state order)",
+      "delta_u = -(25.514825*theta + 7.762308*omega)",
+      "u = u_eq + delta_u"
+    ],
+    "parameters": [
+      {
+        "name": "K",
+        "meaning": "LQR feedback gain for state order ['theta', 'omega']",
+        "unit": "(depends on input/state units)",
+        "value": "[[25.514825404655014, 7.762307649427921]]",
+        "notes": "Computed from CARE; operating point theta_2p5_eq"
+      },
+      {
+        "name": "theta_eq",
+        "meaning": "operating-point value for state theta",
+        "unit": "rad",
+        "value": "2.5",
+        "notes": "Operating-point angle"
+      },
+      {
+        "name": "omega_eq",
+        "meaning": "operating-point value for state omega",
+        "unit": "rad/s",
+        "value": "0.0",
+        "notes": "Operating-point angular velocity"
+      },
+      {
+        "name": "u_eq",
+        "meaning": "operating-point value for input u",
+        "unit": "N\u00b7m",
+        "value": "5.871277622723235",
+        "notes": "Equilibrium torque u0 = m g L sin(theta0)"
+      }
+    ],
+    "assumptions": [
+      "Valid near the linearization point (local stabilization).",
+      "Model linearization matches the implemented deviation-state definitions."
+    ],
+    "implementation_notes": [
+      "Operating point: theta_2p5_eq",
+      "Uses deviation variables: Deviation states are delta_x = [delta_theta, delta_omega]^T = [theta - 2.5, omega - 0]^T.; Deviation input is delta_u = u - 5.871277622723235.",
+      "Add input saturation if actuator limits exist.",
+      "If using discrete control in simulation, set discrete=True and provide dt_s.",
+      "Using the provided continuous-time local linear model about operating point theta_2p5_eq at theta = 2.5 rad, omega = 0, u = 5.871277622723235 N\u00b7m.",
+      "State order matches the supplied linearization: [theta, omega], interpreted as deviation coordinates [delta_theta, delta_omega].",
+      "Weights chosen by a principled heuristic: penalize angle error much more than angular-rate error, while keeping moderate penalty on control effort. Specifically, Q = diag(25, 1) and R = 0.1.",
+      "The equilibrium is away from the downward stable position; the local linearization has A(2,1) = 7.858300205277272 > 0, indicating an open-loop unstable mode near this operating point, so feedback stabilization is required.",
+      "dt_s = 0.01 is included from the design targets for implementation/discretization context, but the provided A and B are continuous-time and the LQR specification here is continuous-time."
+    ],
+    "designed_for_operating_point": "theta_2p5_eq",
+    "designed_for_linear_model": "theta_2p5_eq",
+    "uses_deviation_variables": true,
+    "state_order": [
+      "theta",
+      "omega"
+    ],
+    "input_order": [
+      "u"
+    ],
+    "physical_state_eq": [
+      {
+        "name": "theta",
+        "value": 2.5,
+        "unit": "rad",
+        "notes": "Operating-point angle"
+      },
+      {
+        "name": "omega",
+        "value": 0.0,
+        "unit": "rad/s",
+        "notes": "Operating-point angular velocity"
+      }
+    ],
+    "physical_input_eq": [
+      {
+        "name": "u",
+        "value": 5.871277622723235,
+        "unit": "N\u00b7m",
+        "notes": "Equilibrium torque u0 = m g L sin(theta0)"
+      }
+    ]
+  },
+  "qc": [
+    {
+      "step": "strategy(parse+plan)",
+      "passed": true,
+      "notes": "LQR"
+    },
+    {
+      "step": "modeling",
+      "passed": true,
+      "notes": "Simple Pendulum"
+    },
+    {
+      "step": "control(LQR+solve)",
+      "passed": true,
+      "notes": "numeric K computed"
+    }
+  ]
+}
