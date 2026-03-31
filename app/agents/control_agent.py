@@ -38,16 +38,38 @@ def _llm_make_pid_spec(client: OpenAI, spec: Spec, strategy: Strategy, model: Dy
             f"Operating point inputs:\n{_named_values_to_lines(model.operating_point.input_values)}\n"
         )
 
+    cr_block = ""
+    if model.controller_ready is not None:
+        cr_block += f"\nController-ready model class: {model.controller_ready.model_class}\n"
+        if model.controller_ready.second_order is not None:
+            so = model.controller_ready.second_order
+            cr_block += (
+                "Controller-ready second-order info:\n"
+                f"- valid: {so.valid}\n"
+                f"- form: {so.form}\n"
+                f"- y_name: {so.y_name}\n"
+                f"- ydot_name: {so.ydot_name}\n"
+                f"- y_index_in_state: {so.y_index_in_state}\n"
+                f"- ydot_index_in_state: {so.ydot_index_in_state}\n"
+                f"- a1: {so.a1}\n"
+                f"- a0: {so.a0}\n"
+                f"- b0: {so.b0}\n"
+            )
+
     system = (
-        "You are a control engineer designing a model-based PID family controller.\n"
-        "Choose P / PI / PD / PID and implementation details based on the task and model.\n"
-        "Output MUST follow the schema exactly.\n\n"
+        "You are a control engineer designing a model-based PID-family controller.\n"
+        "Choose P / PI / PD / PID and implementation details based on the task and the provided structured model.\n"
+        "Output MUST follow the PIDDesignSpec schema exactly.\n\n"
         "Rules:\n"
-        "- For local stabilization of a second-order mechanical system (e.g., pendulum near equilibrium), PD is often preferred first unless a specific type of control is required.\n"
-        "- Add integral action only if steady-state error requirement is strict and actuator saturation can be handled.\n"
+        "- The plant's controller-ready second-order local model has already been identified upstream when available.\n"
+        "- Do not invent new plant coefficients here and do not re-derive a0, a1, or b0.\n"
+        "- Your job here is only to choose the controller structure (P / PI / PD / PID) and implementation settings.\n"
+        "- For local stabilization of a second-order mechanical system, PD is usually the preferred first choice unless strict steady-state error requirements justify integral action.\n"
+        "- Add integral action only if steady-state error requirements are important and actuator saturation / windup concerns are manageable.\n"
         "- Use derivative on measurement by default.\n"
-        "- Keep dt, settling time, overshoot consistent with user intent or defaults.\n"
+        "- Keep dt, settling time, overshoot, and actuator limit consistent with the scenario and defaults.\n"
         "- If actuator limit is unknown, you may use null.\n"
+        "- Prefer the simplest controller that satisfies the intent.\n"
     )
 
     user = (
@@ -63,6 +85,7 @@ def _llm_make_pid_spec(client: OpenAI, spec: Spec, strategy: Strategy, model: Dy
         f"Model outputs: {[v.name for v in model.outputs]}\n"
         f"ODE:\n- " + "\n- ".join(model.ode)
         + op_block
+        + cr_block
     )
 
     resp = client.responses.parse(

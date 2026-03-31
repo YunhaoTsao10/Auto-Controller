@@ -151,12 +151,44 @@ def render_model_markdown(snapshot: dict[str, Any]) -> str:
             if B is not None:
                 lines.append(f"- `B = {B}`")
 
-        # If you later want prettier display, you can replace these with actual LaTeX strings.
         lines.extend([
             "",
             "### Canonical Local Form",
             r"$$\delta \dot{x} = A\,\delta x + B\,\delta u$$",
         ])
+
+    controller_ready = model.get("controller_ready")
+    if controller_ready:
+        lines.extend([
+            "",
+            "### Controller-Ready View",
+            f"**Model class:** {controller_ready.get('model_class', 'Unknown')}",
+        ])
+
+        so = controller_ready.get("second_order")
+        if so:
+            lines.extend([
+                "",
+                "**Second-order canonical form**",
+                f"- `valid` = {so.get('valid')}",
+                f"- `form` = `{so.get('form', '')}`",
+                f"- `y_name` = `{so.get('y_name', '?')}`",
+                f"- `ydot_name` = `{so.get('ydot_name', '?')}`",
+                f"- `y_index_in_state` = {so.get('y_index_in_state', '?')}",
+                f"- `ydot_index_in_state` = {so.get('ydot_index_in_state', '?')}",
+                f"- `a1` = {so.get('a1', '?')}",
+                f"- `a0` = {so.get('a0', '?')}",
+                f"- `b0` = {so.get('b0', '?')}",
+                "",
+                "### Canonical Second-Order Form",
+                r"$$\delta \ddot{y} + a_1 \delta \dot{y} + a_0 \delta y = b_0 \delta u$$",
+            ])
+
+        cr_notes = controller_ready.get("notes") or []
+        if cr_notes:
+            lines.extend(["", "**Controller-ready notes**"])
+            for item in cr_notes:
+                lines.append(f"- {item}")
 
     assumptions = model.get("assumptions") or []
     if assumptions:
@@ -171,7 +203,6 @@ def render_model_markdown(snapshot: dict[str, Any]) -> str:
             lines.append(f"- {item}")
 
     return "\n".join(lines)
-
 
 def render_controller_markdown(snapshot: dict[str, Any]) -> str:
     controller = snapshot.get("controller")
@@ -192,7 +223,7 @@ def render_controller_markdown(snapshot: dict[str, Any]) -> str:
 
     required_signals = controller.get("required_signals") or []
     if required_signals:
-        lines.extend(["", "### Required Signals"]) # Variable names that the controller needs access to
+        lines.extend(["", "### Required Signals"])
         for sig in required_signals:
             lines.append(f"- `{sig}`")
 
@@ -203,23 +234,25 @@ def render_controller_markdown(snapshot: dict[str, Any]) -> str:
             lines.append(f"- `{item}`")
 
         law_text = " ".join(law).lower()
-        if controller.get("controller_type", "").upper() == "LQR":
+        ctrl_type = controller.get("controller_type", "").upper()
+
+        if ctrl_type == "LQR":
             lines.extend([
                 "",
                 "### Canonical Law",
                 r"$$u = u_{eq} - K(x - x_{eq})$$",
             ])
-        elif controller.get("controller_type", "").upper() == "PD":
+        elif ctrl_type == "PD":
             lines.extend([
                 "",
                 "### Canonical Law",
-                r"$$u = u_{eq} + K_p(\theta_{ref} - \theta) - K_d\dot{\theta}$$",
+                r"$$u = u_{eq} + K_p e - K_d \dot{y}$$",
             ])
-        elif "integral" in law_text:
+        elif ctrl_type in {"PI", "PID"} or "integral" in law_text:
             lines.extend([
                 "",
                 "### Canonical Law",
-                r"$$u = K_p e + K_i \int e\,dt + K_d\dot{e}$$",
+                r"$$u = u_{eq} + K_p e + K_i \int e\,dt - K_d \dot{y}$$",
             ])
 
     params = controller.get("parameters") or []
@@ -254,6 +287,10 @@ DEFAULT_PROMPT = (
     "theta = 2.5 rad. Use m = 1 kg, L = 1 m, g = 9.81 m/s^2, and damping b = 0.05. "
     "Target less than 10% overshoot and settling time around 2 seconds."
 )
+
+# Please model a mass-spring-damper system and design a local stabilizing PD controller around x = 1.0 m.
+# Use m = 1.0 kg, c = 0.4 N·s/m, k = 4.0 N/m.
+# Target less than 10% overshoot and settling time around 2 seconds.
 
 
 with gr.Blocks(title="Agentic Control Design Demo") as demo:

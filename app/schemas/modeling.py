@@ -65,6 +65,35 @@ class LinearizationInfo(BaseModel):
     sanity_checks: list[str] = Field(default_factory=list)
 
 
+class SecondOrderCanonicalInfo(BaseModel):
+    valid: bool = Field(..., description="Whether a local second-order SISO deviation-form representation is valid")
+    form: Literal["delta_y_ddot + a1*delta_y_dot + a0*delta_y = b0*delta_u"] = \
+        "delta_y_ddot + a1*delta_y_dot + a0*delta_y = b0*delta_u"
+
+    y_name: str = Field(..., description="controlled output in absolute coordinates, e.g. theta or x")
+    ydot_name: str = Field(..., description="time derivative of the controlled output, e.g. omega or v")
+
+    y_index_in_state: int = Field(..., description="index in local_linear_model.state_order")
+    ydot_index_in_state: int = Field(..., description="index in local_linear_model.state_order")
+
+    a0: float = Field(..., description="coefficient multiplying delta_y")
+    a1: float = Field(..., description="coefficient multiplying delta_y_dot")
+    b0: float = Field(..., description="coefficient multiplying delta_u")
+
+    assumptions: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
+class ControllerReadyModel(BaseModel):
+    model_class: Literal["second_order_siso", "general_siso", "general_mimo", "unsupported"] = "unsupported"
+
+    second_order: SecondOrderCanonicalInfo | None = None
+
+    notes: list[str] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)
+    sanity_checks: list[str] = Field(default_factory=list)
+
+
 class DynamicsModel(BaseModel):
     model_name: str = Field(..., description="e.g., Spring-Mass-Damper, Simple Pendulum")
     model_type: Literal["nonlinear_ode", "linear_state_space", "transfer_function", "hybrid"] = "nonlinear_ode"
@@ -79,6 +108,8 @@ class DynamicsModel(BaseModel):
     output_equations: list[Equation] = Field(default_factory=list)
     operating_point: OperatingPoint | None = None
     local_linear_model: LinearizationInfo | None = None
+
+    controller_ready: ControllerReadyModel | None = None
 
     # Backward-compatible legacy fields
     ode: list[str] = Field(default_factory=list, description="plain-text ODE lines")
