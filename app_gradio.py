@@ -37,10 +37,20 @@ def run_design(user_instruction: str, urdf_file: str | None):
 
     app = build_app()
 
-    state = {
-        "raw_request": user_instruction.strip(),
-        "urdf": urdf_file if urdf_file else None,
-    }
+    xml_text = None
+    if urdf_file:
+        xml_text = Path(urdf_file).read_text(encoding="utf-8", errors="ignore")
+
+        state = {
+            "raw_request": user_instruction.strip() + "\n\nUploaded robot.xml content:\n" + xml_text,
+            "urdf": urdf_file if urdf_file else None,
+        }
+    
+    else:
+        state = {
+            "raw_request": user_instruction.strip(),
+            "urdf": None,
+        }
 
     out = app.invoke(state)
     snapshot = _build_snapshot(out)
@@ -283,7 +293,7 @@ def render_controller_markdown(snapshot: dict[str, Any]) -> str:
 # -----------------------------------------------------------------------------
 
 DEFAULT_PROMPT = (
-    "Please model a simple pendulum and design a local stabilizing controller around "
+    "Please model a simple pendulum and design a local PD stabilizing controller around "
     "theta = 2.5 rad. Use m = 1 kg, L = 1 m, g = 9.81 m/s^2, and damping b = 0.05. "
     "Target less than 10% overshoot and settling time around 2 seconds."
 )
@@ -291,6 +301,41 @@ DEFAULT_PROMPT = (
 # Please model a mass-spring-damper system and design a local stabilizing PD controller around x = 1.0 m.
 # Use m = 1.0 kg, c = 0.4 N·s/m, k = 4.0 N/m.
 # Target less than 10% overshoot and settling time around 2 seconds.
+
+# The uploaded robot.xml describes a free-floating space robot in MuJoCo.
+# Task:
+# Design a continuous-time LQR controller for point-to-point motion from a fixed initial state to a fixed goal state.
+# Requirements:
+# 1. Do not reduce the robot to a single-axis model.
+# 2. Use a local linear state-space model suitable for LQR.
+# 3. The state should include at least position, velocity, attitude, and angular velocity.
+# 4. The control inputs should correspond to the robot actuators in the XML.
+# 5. Reuse the uploaded XML content to infer the robot structure, inertia, and available actuators.
+# 6. The result must provide:
+#    - operating point
+#    - state order
+#    - input order
+#    - A, B, Q, R matrices
+#    - equilibrium state x_eq
+#    - equilibrium input u_eq
+#    - LQR feedback law u = u_eq - K(x - x_eq)
+# Control objective:
+# Move the robot from an initial waypoint to a target waypoint in free space while stabilizing attitude.
+# Initial desired state:
+# position = [x0, y0, z0]
+# velocity = [0, 0, 0]
+# quaternion = [1, 0, 0, 0]
+# angular_velocity = [0, 0, 0]
+# Target desired state:
+# position = [xg, yg, zg]
+# velocity = [0, 0, 0]
+# quaternion = [1, 0, 0, 0]
+# angular_velocity = [0, 0, 0]
+# Important:
+# - Treat this as a multi-input multi-state spacecraft control problem.
+# - Do not collapse it into a SISO second-order template.
+# - If needed, make clearly stated small-angle and local-linearity assumptions near the target state.
+
 
 
 with gr.Blocks(title="Agentic Control Design Demo") as demo:

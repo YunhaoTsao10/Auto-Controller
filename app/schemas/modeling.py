@@ -55,6 +55,12 @@ class LinearizationInfo(BaseModel):
     input_definition: str = Field(default="delta_u = u - u_eq")
     output_definition: str = Field(default="delta_y = y - y_eq")
 
+    feedback_coordinates: Literal["physical", "deviation"] = "deviation"
+    final_control_law_template: str = Field(
+        default="u_phys = u_eq + delta_u",
+        description="How feedback-space control should be mapped back to physical input."
+    )
+
     A: Matrix
     B: Matrix
     C: Matrix | None = None

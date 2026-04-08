@@ -1,401 +1,1842 @@
 {
   "spec": {
-    "scenario": "Simple pendulum local stabilization about theta = 2.5 rad.\nPlant:\nNonlinear dynamics: m L^2 * theta_ddot + b * theta_dot + m g L * sin(theta) = u\nParameters: m = 1 kg, L = 1 m, g = 9.81 m/s^2, b = 0.05\nOperating point: theta_eq = 2.5 rad, theta_dot_eq = 0 rad/s\nControl objective: locally stabilize theta near 2.5 rad.",
+    "scenario": "Design a continuous-time LQR controller for point-to-point motion of a free-floating multi-input space robot in MuJoCo, without reducing to a single-axis model. Reuse the uploaded XML to infer structure, inertia, and actuators. Use a local linear state-space model near the target state with clearly stated small-angle/local-linearity assumptions near the goal.\n\nPlant:\nUploaded robot.xml content:\n<mujoco model=\"space_robot\">\n  <compiler angle=\"degree\"/>\n  <option gravity=\"0 0 0\" integrator=\"RK4\" timestep=\"0.002\"/>\n\n  <asset>\n    <mesh name=\"iss_mesh\" file=\"iss_raw_export.obj\" scale=\"1 1 1\"/>\n  </asset>\n\n  <worldbody>\n      <!-- impact ball -->\n    <body name=\"iss_body\" pos=\"5.0 0.0 0.0\">\n        \n        <freejoint name=\"iss_free\"/>\n        \n        <geom name=\"iss_geom\" type=\"mesh\" mesh=\"iss_mesh\"\n            rgba=\"0.9 0.9 0.9 1\"\n            mass=\"1000.0\"\n            contype=\"0\"\n            conaffinity=\"0\"/>\n    </body>\n\n    <!-- main body: 0.6 m cube, mass=25 kg -->\n    <body name=\"robot\" pos=\"0 0 0\">\n      <freejoint/>\n      <geom type=\"box\" size=\"0.3 0.3 0.3\" rgba=\"1.0 0.0 1.0 1.0\" mass=\"25\"/>\n\n      <!-- Thruster sites on each face (visual markers) -->\n      <site name=\"thruster_px\" pos=\" 0.3  0.0  0.0\" size=\"0.03\" rgba=\"1 0 0 1\"/>\n      <site name=\"thruster_nx\" pos=\"-0.3  0.0  0.0\" size=\"0.03\" rgba=\"1 0 0 1\"/>\n      <site name=\"thruster_py\" pos=\" 0.0  0.3  0.0\" size=\"0.03\" rgba=\"0 1 0 1\"/>\n      <site name=\"thruster_ny\" pos=\" 0.0 -0.3  0.0\" size=\"0.03\" rgba=\"0 1 0 1\"/>\n      <site name=\"thruster_pz\" pos=\" 0.0  0.0  0.3\" size=\"0.03\" rgba=\"0 0 1 1\"/>\n      <site name=\"thruster_nz\" pos=\" 0.0  0.0 -0.3\" size=\"0.03\" rgba=\"0 0 1 1\"/>\n\n      <!-- ==================== Reaction wheels ==================== -->\n      <!-- X-axis wheel (about +X) -->\n      <body name=\"reaction_wheel_x\" pos=\"0 0 0\">\n        <joint name=\"rw_x\" type=\"hinge\" axis=\"1 0 0\" limited=\"false\" damping=\"0.04\"/>\n\n        <inertial pos=\"0 0 0\" mass=\"1.5\" diaginertia=\"0.006075 0.00315 0.00315\"/>\n        <geom type=\"cylinder\" fromto=\"-0.015 0 0  0.015 0 0\" size=\"0.09\"\n              rgba=\"1 1 0 1\" contype=\"0\" conaffinity=\"0\"/>\n      </body>\n\n      <!-- Y-axis wheel (about +Y) -->\n      <body name=\"reaction_wheel_y\" pos=\"0 0 0\">\n        <joint name=\"rw_y\" type=\"hinge\" axis=\"0 1 0\" limited=\"false\" damping=\"0.04\"/>\n\n        <inertial pos=\"0 0 0\" mass=\"1.5\" diaginertia=\"0.00315 0.006075 0.00315\"/>\n        <geom type=\"cylinder\" fromto=\"0 -0.015 0  0 0.015 0\" size=\"0.09\"\n              rgba=\"1 1 0 1\" contype=\"0\" conaffinity=\"0\"/>\n      </body>\n\n      <!-- Z-axis wheel (about +Z) -->\n      <body name=\"reaction_wheel_z\" pos=\"0 0 0\">\n        <joint name=\"rw_z\" type=\"hinge\" axis=\"0 0 1\" limited=\"false\" damping=\"0.04\"/>\n\n        <inertial pos=\"0 0 0\" mass=\"1.5\" diaginertia=\"0.00315 0.00315 0.006075\"/>\n        <geom type=\"cylinder\" fromto=\"0 0 -0.015  0 0 0.015\" size=\"0.09\"\n              rgba=\"1 1 0 1\" contype=\"0\" conaffinity=\"0\"/>\n      </body>\n\n      <!-- ========================================================================== -->\n\n    </body>\n  </worldbody>\n\n  <actuator>\n    <!-- ==================== Thrusters (force actuators) ==================== -->\n    <!-- ctrl in Newtons; gear is direction in body frame -->\n    <general name=\"thruster_px\" site=\"thruster_px\" gear=\" 1  0  0\"\n             ctrllimited=\"true\" ctrlrange=\"0 20.0\"/>\n    <general name=\"thruster_nx\" site=\"thruster_nx\" gear=\"-1  0  0\"\n             ctrllimited=\"true\" ctrlrange=\"0 20.0\"/>\n    <general name=\"thruster_py\" site=\"thruster_py\" gear=\" 0  1  0\"\n             ctrllimited=\"true\" ctrlrange=\"0 20.0\"/>\n    <general name=\"thruster_ny\" site=\"thruster_ny\" gear=\" 0 -1  0\"\n             ctrllimited=\"true\" ctrlrange=\"0 20.0\"/>\n    <general name=\"thruster_pz\" site=\"thruster_pz\" gear=\" 0  0  1\"\n             ctrllimited=\"true\" ctrlrange=\"0 20.0\"/>\n    <general name=\"thruster_nz\" site=\"thruster_nz\" gear=\" 0  0 -1\"\n             ctrllimited=\"true\" ctrlrange=\"0 20.0\"/>\n\n    <!-- ==================== Reaction wheels: torque actuators ==================== -->\n    <motor name=\"rw_x\" joint=\"rw_x\" gear=\"1\"\n        ctrllimited=\"true\" ctrlrange=\"-5.0 5.0\"/>\n    <motor name=\"rw_y\" joint=\"rw_y\" gear=\"1\"\n        ctrllimited=\"true\" ctrlrange=\"-5.0 5.0\"/>\n    <motor name=\"rw_z\" joint=\"rw_z\" gear=\"1\"\n        ctrllimited=\"true\" ctrlrange=\"-5.0 5.0\"/>\n\n\n  </actuator>\n</mujoco>\n\nControl objective: move from fixed initial waypoint to fixed target waypoint in free space while stabilizing attitude.\nInitial desired state: position=[0,0,0], velocity=[0,0,0], quaternion=[1,0,0,0], angular_velocity=[0,0,0].\nTarget desired state: position=[1,1,1], velocity=[0,0,0], quaternion=[1,0,0,0], angular_velocity=[0,0,0].\nRequired outputs: operating point, state order, input order, A, B, Q, R matrices, equilibrium state x_eq, equilibrium input u_eq, and LQR law u = u_eq - K(x - x_eq).\nAssumptions: local linearization near target; small-angle attitude error representation around quaternion [1,0,0,0].",
     "constraints": [
       {
-        "name": "equilibrium_angle",
-        "value": "2.5",
-        "unit": "rad",
+        "name": "controller_type",
+        "value": "continuous-time LQR",
+        "unit": null,
         "kind": "hard"
       },
       {
-        "name": "mass",
-        "value": "1",
-        "unit": "kg",
+        "name": "model_reduction",
+        "value": "do not reduce to single-axis or SISO model",
+        "unit": null,
         "kind": "hard"
       },
       {
-        "name": "length",
-        "value": "1",
-        "unit": "m",
+        "name": "model_form",
+        "value": "local linear state-space model suitable for LQR",
+        "unit": null,
         "kind": "hard"
       },
       {
-        "name": "gravity",
-        "value": "9.81",
-        "unit": "m/s^2",
+        "name": "state_contents",
+        "value": "must include at least position, velocity, attitude, and angular velocity",
+        "unit": null,
         "kind": "hard"
       },
       {
-        "name": "damping",
-        "value": "0.05",
-        "unit": "Nms/rad",
+        "name": "input_definition",
+        "value": "control inputs must correspond to robot actuators in XML",
+        "unit": null,
+        "kind": "hard"
+      },
+      {
+        "name": "robot_source",
+        "value": "reuse uploaded XML to infer structure, inertia, and actuators",
+        "unit": null,
+        "kind": "hard"
+      },
+      {
+        "name": "required_output",
+        "value": "operating point",
+        "unit": null,
+        "kind": "hard"
+      },
+      {
+        "name": "required_output",
+        "value": "state order",
+        "unit": null,
+        "kind": "hard"
+      },
+      {
+        "name": "required_output",
+        "value": "input order",
+        "unit": null,
+        "kind": "hard"
+      },
+      {
+        "name": "required_output",
+        "value": "A matrix",
+        "unit": null,
+        "kind": "hard"
+      },
+      {
+        "name": "required_output",
+        "value": "B matrix",
+        "unit": null,
+        "kind": "hard"
+      },
+      {
+        "name": "required_output",
+        "value": "Q matrix",
+        "unit": null,
+        "kind": "hard"
+      },
+      {
+        "name": "required_output",
+        "value": "R matrix",
+        "unit": null,
+        "kind": "hard"
+      },
+      {
+        "name": "required_output",
+        "value": "equilibrium state x_eq",
+        "unit": null,
+        "kind": "hard"
+      },
+      {
+        "name": "required_output",
+        "value": "equilibrium input u_eq",
+        "unit": null,
+        "kind": "hard"
+      },
+      {
+        "name": "required_output",
+        "value": "feedback law u = u_eq - K(x - x_eq)",
+        "unit": null,
+        "kind": "hard"
+      },
+      {
+        "name": "environment_gravity",
+        "value": "0 0 0",
+        "unit": null,
+        "kind": "hard"
+      },
+      {
+        "name": "integrator",
+        "value": "RK4",
+        "unit": null,
+        "kind": "soft"
+      },
+      {
+        "name": "simulation_timestep",
+        "value": "0.002",
+        "unit": "s",
+        "kind": "soft"
+      },
+      {
+        "name": "thruster_force_range",
+        "value": "0 to 20 for each thruster",
+        "unit": "N",
+        "kind": "hard"
+      },
+      {
+        "name": "reaction_wheel_torque_range",
+        "value": "-5 to 5 for each wheel motor",
+        "unit": "N\u00b7m",
+        "kind": "hard"
+      },
+      {
+        "name": "operating_regime",
+        "value": "small-angle local linearization near target quaternion [1,0,0,0]",
+        "unit": null,
         "kind": "hard"
       }
     ],
-    "urdf": null,
+    "urdf": "C:\\Users\\Yunhao Cao\\AppData\\Local\\Temp\\gradio\\58073010d8c87e0b54bde5e4fc613f5325bf9d80a4b1771323f10a2b462ae0f8\\robot.xml",
     "design_targets": {
-      "dt_s": "0.01",
-      "settle_time_s": "2.0",
-      "overshoot_pct": "10",
-      "torque_limit_nm": "5.0",
-      "theta_range_rad": "0.5"
+      "dt_s": "0.002",
+      "settle_time_s": "10",
+      "overshoot_pct": "5",
+      "torque_limit_nm": "5",
+      "theta_range_rad": "0.2"
     }
   },
   "strategy": {
-    "family": "PID",
-    "reason": "Local single-joint stabilization around a fixed operating point is well served by a simple PID-family controller; PD is typically sufficient for pendulum angle regulation with damping."
+    "family": "LQR",
+    "reason": "Multi-input free-floating spacecraft regulation/tracking around a fixed operating point is well matched to local linear state-space control with continuous-time LQR."
   },
   "model": {
-    "model_name": "Simple Pendulum",
+    "model_name": "MuJoCo Space Robot with 6 Thrusters and 3 Reaction Wheels",
     "model_type": "nonlinear_ode",
     "states": [
       {
-        "name": "theta",
-        "meaning": "pendulum angle",
+        "name": "p_x",
+        "meaning": "robot center-of-mass position along world x",
+        "unit": "m"
+      },
+      {
+        "name": "p_y",
+        "meaning": "robot center-of-mass position along world y",
+        "unit": "m"
+      },
+      {
+        "name": "p_z",
+        "meaning": "robot center-of-mass position along world z",
+        "unit": "m"
+      },
+      {
+        "name": "v_x",
+        "meaning": "robot center-of-mass velocity along world x",
+        "unit": "m/s"
+      },
+      {
+        "name": "v_y",
+        "meaning": "robot center-of-mass velocity along world y",
+        "unit": "m/s"
+      },
+      {
+        "name": "v_z",
+        "meaning": "robot center-of-mass velocity along world z",
+        "unit": "m/s"
+      },
+      {
+        "name": "phi_x",
+        "meaning": "small-angle attitude error about body/world x near quaternion [1,0,0,0]",
         "unit": "rad"
       },
       {
-        "name": "omega",
-        "meaning": "pendulum angular velocity",
+        "name": "phi_y",
+        "meaning": "small-angle attitude error about body/world y near quaternion [1,0,0,0]",
+        "unit": "rad"
+      },
+      {
+        "name": "phi_z",
+        "meaning": "small-angle attitude error about body/world z near quaternion [1,0,0,0]",
+        "unit": "rad"
+      },
+      {
+        "name": "omega_x",
+        "meaning": "robot angular velocity about body x",
+        "unit": "rad/s"
+      },
+      {
+        "name": "omega_y",
+        "meaning": "robot angular velocity about body y",
+        "unit": "rad/s"
+      },
+      {
+        "name": "omega_z",
+        "meaning": "robot angular velocity about body z",
         "unit": "rad/s"
       }
     ],
     "inputs": [
       {
-        "name": "u",
-        "meaning": "applied control torque at pivot",
-        "unit": "N\u00b7m"
+        "name": "u_thruster_px",
+        "meaning": "commanded force of +x face thruster acting along +body x at site x=+0.3 m",
+        "unit": "N"
+      },
+      {
+        "name": "u_thruster_nx",
+        "meaning": "commanded force of -x face thruster acting along -body x at site x=-0.3 m",
+        "unit": "N"
+      },
+      {
+        "name": "u_thruster_py",
+        "meaning": "commanded force of +y face thruster acting along +body y at site y=+0.3 m",
+        "unit": "N"
+      },
+      {
+        "name": "u_thruster_ny",
+        "meaning": "commanded force of -y face thruster acting along -body y at site y=-0.3 m",
+        "unit": "N"
+      },
+      {
+        "name": "u_thruster_pz",
+        "meaning": "commanded force of +z face thruster acting along +body z at site z=+0.3 m",
+        "unit": "N"
+      },
+      {
+        "name": "u_thruster_nz",
+        "meaning": "commanded force of -z face thruster acting along -body z at site z=-0.3 m",
+        "unit": "N"
+      },
+      {
+        "name": "u_rw_x",
+        "meaning": "motor torque applied to x-axis reaction wheel joint",
+        "unit": "N*m"
+      },
+      {
+        "name": "u_rw_y",
+        "meaning": "motor torque applied to y-axis reaction wheel joint",
+        "unit": "N*m"
+      },
+      {
+        "name": "u_rw_z",
+        "meaning": "motor torque applied to z-axis reaction wheel joint",
+        "unit": "N*m"
       }
     ],
     "outputs": [
       {
-        "name": "theta",
-        "meaning": "pendulum angle",
+        "name": "p_x",
+        "meaning": "robot center-of-mass position along world x",
+        "unit": "m"
+      },
+      {
+        "name": "p_y",
+        "meaning": "robot center-of-mass position along world y",
+        "unit": "m"
+      },
+      {
+        "name": "p_z",
+        "meaning": "robot center-of-mass position along world z",
+        "unit": "m"
+      },
+      {
+        "name": "v_x",
+        "meaning": "robot center-of-mass velocity along world x",
+        "unit": "m/s"
+      },
+      {
+        "name": "v_y",
+        "meaning": "robot center-of-mass velocity along world y",
+        "unit": "m/s"
+      },
+      {
+        "name": "v_z",
+        "meaning": "robot center-of-mass velocity along world z",
+        "unit": "m/s"
+      },
+      {
+        "name": "phi_x",
+        "meaning": "small-angle attitude error about body/world x near quaternion [1,0,0,0]",
         "unit": "rad"
+      },
+      {
+        "name": "phi_y",
+        "meaning": "small-angle attitude error about body/world y near quaternion [1,0,0,0]",
+        "unit": "rad"
+      },
+      {
+        "name": "phi_z",
+        "meaning": "small-angle attitude error about body/world z near quaternion [1,0,0,0]",
+        "unit": "rad"
+      },
+      {
+        "name": "omega_x",
+        "meaning": "robot angular velocity about body x",
+        "unit": "rad/s"
+      },
+      {
+        "name": "omega_y",
+        "meaning": "robot angular velocity about body y",
+        "unit": "rad/s"
+      },
+      {
+        "name": "omega_z",
+        "meaning": "robot angular velocity about body z",
+        "unit": "rad/s"
       }
     ],
     "parameters": [
       {
-        "name": "m",
-        "meaning": "pendulum mass",
+        "name": "m_b",
+        "meaning": "main robot body mass from XML box geom",
         "unit": "kg",
-        "value": "1",
-        "notes": "hard constraint from scenario"
+        "value": "25.0",
+        "notes": "Cube body mass."
       },
       {
-        "name": "L",
-        "meaning": "pendulum length",
+        "name": "m_rw",
+        "meaning": "single reaction wheel mass",
+        "unit": "kg",
+        "value": "1.5",
+        "notes": "Each of 3 wheels has same mass."
+      },
+      {
+        "name": "m",
+        "meaning": "total spacecraft mass used for translational dynamics",
+        "unit": "kg",
+        "value": "29.5",
+        "notes": "m = 25 + 3*1.5; includes body and reaction wheel masses."
+      },
+      {
+        "name": "I_bx",
+        "meaning": "main body inertia about x for 0.6 m cube",
+        "unit": "kg*m^2",
+        "value": "1.5",
+        "notes": "I = (1/6) m a^2 with m=25 kg, a=0.6 m."
+      },
+      {
+        "name": "I_by",
+        "meaning": "main body inertia about y for 0.6 m cube",
+        "unit": "kg*m^2",
+        "value": "1.5",
+        "notes": "Same as x by symmetry."
+      },
+      {
+        "name": "I_bz",
+        "meaning": "main body inertia about z for 0.6 m cube",
+        "unit": "kg*m^2",
+        "value": "1.5",
+        "notes": "Same as x by symmetry."
+      },
+      {
+        "name": "I_rwx_spin",
+        "meaning": "x-wheel spin-axis inertia from XML diaginertia",
+        "unit": "kg*m^2",
+        "value": "0.006075",
+        "notes": "Wheel hinge axis aligned with x."
+      },
+      {
+        "name": "I_rwy_spin",
+        "meaning": "y-wheel spin-axis inertia from XML diaginertia",
+        "unit": "kg*m^2",
+        "value": "0.006075",
+        "notes": "Wheel hinge axis aligned with y."
+      },
+      {
+        "name": "I_rwz_spin",
+        "meaning": "z-wheel spin-axis inertia from XML diaginertia",
+        "unit": "kg*m^2",
+        "value": "0.006075",
+        "notes": "Wheel hinge axis aligned with z."
+      },
+      {
+        "name": "J_x",
+        "meaning": "effective spacecraft rigid-body inertia about x excluding wheel relative spin state but including mounted wheel transverse inertias",
+        "unit": "kg*m^2",
+        "value": "1.5063",
+        "notes": "Approx. 1.5 + 0.006075 (x wheel spin-axis body-carried) + 0.00315 + 0.00315 (y,z wheel transverse inertias)."
+      },
+      {
+        "name": "J_y",
+        "meaning": "effective spacecraft rigid-body inertia about y excluding wheel relative spin state but including mounted wheel transverse inertias",
+        "unit": "kg*m^2",
+        "value": "1.5063",
+        "notes": "Symmetric."
+      },
+      {
+        "name": "J_z",
+        "meaning": "effective spacecraft rigid-body inertia about z excluding wheel relative spin state but including mounted wheel transverse inertias",
+        "unit": "kg*m^2",
+        "value": "1.5063",
+        "notes": "Symmetric."
+      },
+      {
+        "name": "d_rw",
+        "meaning": "reaction wheel joint viscous damping from XML",
+        "unit": "N*m*s/rad",
+        "value": "0.04",
+        "notes": "Acts on wheel relative hinge rate; neglected in reduced 12-state local model because wheel-speed states are omitted."
+      },
+      {
+        "name": "F_max_thr",
+        "meaning": "maximum commanded force per thruster",
+        "unit": "N",
+        "value": "20.0",
+        "notes": "Lower bound is 0 N."
+      },
+      {
+        "name": "T_max_rw",
+        "meaning": "maximum motor torque magnitude per reaction wheel actuator",
+        "unit": "N*m",
+        "value": "5.0",
+        "notes": "Range [-5,5] N*m."
+      },
+      {
+        "name": "r_thr",
+        "meaning": "thruster site offset from body center",
         "unit": "m",
-        "value": "1",
-        "notes": "hard constraint from scenario"
-      },
-      {
-        "name": "g",
-        "meaning": "gravitational acceleration",
-        "unit": "m/s^2",
-        "value": "9.81",
-        "notes": "hard constraint from scenario"
-      },
-      {
-        "name": "b",
-        "meaning": "viscous damping coefficient",
-        "unit": "N\u00b7m\u00b7s/rad",
-        "value": "0.05",
-        "notes": "hard constraint from scenario"
-      },
-      {
-        "name": "theta_eq",
-        "meaning": "equilibrium angle for local stabilization",
-        "unit": "rad",
-        "value": "2.5",
-        "notes": "requested operating point"
-      },
-      {
-        "name": "u_eq",
-        "meaning": "equilibrium torque required to hold theta_eq",
-        "unit": "N\u00b7m",
-        "value": "5.871322893124",
-        "notes": "u_eq = m g L sin(theta_eq) with m=1, g=9.81, L=1, theta_eq=2.5 rad"
+        "value": "0.3",
+        "notes": "Thrusters mounted on body faces."
       }
     ],
     "assumptions": [
-      "Simple rigid pendulum with point mass m at distance L from pivot.",
-      "Control input u is a directly applied pivot torque.",
-      "Viscous damping is linear in angular velocity: b*theta_dot.",
-      "Angle theta is measured in radians and treated as an unconstrained coordinate locally near 2.5 rad.",
-      "Local PID design is based on deviation dynamics around the specified equilibrium."
+      "Zero gravity as specified in MuJoCo option gravity='0 0 0'.",
+      "Local linearization is taken near the target waypoint p=[1,1,1] m, zero velocity, quaternion [1,0,0,0], zero angular velocity.",
+      "Attitude is represented locally by small-angle error vector phi = [phi_x, phi_y, phi_z], with quaternion approximately q \u2248 [1, 0.5 phi_x, 0.5 phi_y, 0.5 phi_z].",
+      "Body orientation near target is close to identity, so body-frame thruster directions are approximated as world-frame directions in the linear model.",
+      "Thrusters act through the centerline of the cube faces, so each individual thruster produces pure translation and no first-order torque about the COM because r \u00d7 F = 0 for each face-normal thruster.",
+      "Reaction wheel torques produce equal and opposite torques on the robot body; wheel-speed states are not included, so actuator torques are treated as direct body torque inputs in the local model.",
+      "Gyroscopic coupling, wheel angular momentum bias effects, quaternion normalization effects, and any contact/collision effects with iss_body are neglected in the local linear model near the target.",
+      "The ISS mesh body is present in the XML but uncoupled in the chosen local free-space control model because no contacts or constraints are specified and the target motion is for the robot body.",
+      "Because thruster commands are unilateral (0 to 20 N), the linear model uses deviation inputs around a nonzero balanced operating point of 10 N per opposing thruster pair, enabling signed small-signal net force commands.",
+      "Operating point is an equilibrium in free space with zero net force and zero net torque."
     ],
     "dynamics": [
       {
-        "lhs": "theta_dot",
-        "rhs": "omega",
-        "notes": "kinematic state equation"
+        "lhs": "p_x_dot",
+        "rhs": "v_x",
+        "notes": "Translational kinematics."
       },
       {
-        "lhs": "omega_dot",
-        "rhs": "(1/(m*L^2))*(u - b*omega - m*g*L*sin(theta))",
-        "notes": "from m L^2 theta_ddot + b theta_dot + m g L sin(theta) = u"
+        "lhs": "p_y_dot",
+        "rhs": "v_y",
+        "notes": "Translational kinematics."
+      },
+      {
+        "lhs": "p_z_dot",
+        "rhs": "v_z",
+        "notes": "Translational kinematics."
+      },
+      {
+        "lhs": "v_x_dot",
+        "rhs": "((u_thruster_px - u_thruster_nx))/m",
+        "notes": "Near identity attitude; net x-force from opposing thrusters."
+      },
+      {
+        "lhs": "v_y_dot",
+        "rhs": "((u_thruster_py - u_thruster_ny))/m",
+        "notes": "Near identity attitude; net y-force from opposing thrusters."
+      },
+      {
+        "lhs": "v_z_dot",
+        "rhs": "((u_thruster_pz - u_thruster_nz))/m",
+        "notes": "Near identity attitude; net z-force from opposing thrusters."
+      },
+      {
+        "lhs": "phi_x_dot",
+        "rhs": "omega_x",
+        "notes": "Small-angle attitude kinematics near quaternion [1,0,0,0]."
+      },
+      {
+        "lhs": "phi_y_dot",
+        "rhs": "omega_y",
+        "notes": "Small-angle attitude kinematics near quaternion [1,0,0,0]."
+      },
+      {
+        "lhs": "phi_z_dot",
+        "rhs": "omega_z",
+        "notes": "Small-angle attitude kinematics near quaternion [1,0,0,0]."
+      },
+      {
+        "lhs": "omega_x_dot",
+        "rhs": "-(u_rw_x)/J_x",
+        "notes": "Body torque equals negative wheel motor torque by internal action-reaction; wheel damping omitted in reduced model."
+      },
+      {
+        "lhs": "omega_y_dot",
+        "rhs": "-(u_rw_y)/J_y",
+        "notes": "Body torque equals negative wheel motor torque."
+      },
+      {
+        "lhs": "omega_z_dot",
+        "rhs": "-(u_rw_z)/J_z",
+        "notes": "Body torque equals negative wheel motor torque."
       }
     ],
     "output_equations": [
       {
         "lhs": "y",
-        "rhs": "theta",
-        "notes": "controlled output is pendulum angle"
+        "rhs": "[p_x, p_y, p_z, v_x, v_y, v_z, phi_x, phi_y, phi_z, omega_x, omega_y, omega_z]",
+        "notes": "Full-state output for state feedback / estimation interface."
       }
     ],
     "operating_point": {
-      "name": "theta_2p5_eq",
+      "name": "target_equilibrium",
       "kind": "equilibrium",
       "state_values": [
         {
-          "name": "theta",
-          "value": 2.5,
-          "unit": "rad",
-          "notes": "specified operating angle"
+          "name": "p_x",
+          "value": 1.0,
+          "unit": "m",
+          "notes": "Target waypoint x."
         },
         {
-          "name": "omega",
+          "name": "p_y",
+          "value": 1.0,
+          "unit": "m",
+          "notes": "Target waypoint y."
+        },
+        {
+          "name": "p_z",
+          "value": 1.0,
+          "unit": "m",
+          "notes": "Target waypoint z."
+        },
+        {
+          "name": "v_x",
+          "value": 0.0,
+          "unit": "m/s",
+          "notes": "Zero terminal velocity."
+        },
+        {
+          "name": "v_y",
+          "value": 0.0,
+          "unit": "m/s",
+          "notes": "Zero terminal velocity."
+        },
+        {
+          "name": "v_z",
+          "value": 0.0,
+          "unit": "m/s",
+          "notes": "Zero terminal velocity."
+        },
+        {
+          "name": "phi_x",
+          "value": 0.0,
+          "unit": "rad",
+          "notes": "Corresponds to target quaternion [1,0,0,0] under small-angle coordinates."
+        },
+        {
+          "name": "phi_y",
+          "value": 0.0,
+          "unit": "rad",
+          "notes": "Corresponds to target quaternion [1,0,0,0] under small-angle coordinates."
+        },
+        {
+          "name": "phi_z",
+          "value": 0.0,
+          "unit": "rad",
+          "notes": "Corresponds to target quaternion [1,0,0,0] under small-angle coordinates."
+        },
+        {
+          "name": "omega_x",
           "value": 0.0,
           "unit": "rad/s",
-          "notes": "equilibrium angular velocity"
+          "notes": "Zero target angular rate."
+        },
+        {
+          "name": "omega_y",
+          "value": 0.0,
+          "unit": "rad/s",
+          "notes": "Zero target angular rate."
+        },
+        {
+          "name": "omega_z",
+          "value": 0.0,
+          "unit": "rad/s",
+          "notes": "Zero target angular rate."
         }
       ],
       "input_values": [
         {
-          "name": "u",
-          "value": 5.871322893124,
-          "unit": "N\u00b7m",
-          "notes": "balances gravity at theta=2.5 rad"
+          "name": "u_thruster_px",
+          "value": 10.0,
+          "unit": "N",
+          "notes": "Balanced midpoint bias to allow signed local force deviation while respecting 0..20 N actuator range."
+        },
+        {
+          "name": "u_thruster_nx",
+          "value": 10.0,
+          "unit": "N",
+          "notes": "Balanced midpoint bias."
+        },
+        {
+          "name": "u_thruster_py",
+          "value": 10.0,
+          "unit": "N",
+          "notes": "Balanced midpoint bias."
+        },
+        {
+          "name": "u_thruster_ny",
+          "value": 10.0,
+          "unit": "N",
+          "notes": "Balanced midpoint bias."
+        },
+        {
+          "name": "u_thruster_pz",
+          "value": 10.0,
+          "unit": "N",
+          "notes": "Balanced midpoint bias."
+        },
+        {
+          "name": "u_thruster_nz",
+          "value": 10.0,
+          "unit": "N",
+          "notes": "Balanced midpoint bias."
+        },
+        {
+          "name": "u_rw_x",
+          "value": 0.0,
+          "unit": "N*m",
+          "notes": "Zero equilibrium wheel torque."
+        },
+        {
+          "name": "u_rw_y",
+          "value": 0.0,
+          "unit": "N*m",
+          "notes": "Zero equilibrium wheel torque."
+        },
+        {
+          "name": "u_rw_z",
+          "value": 0.0,
+          "unit": "N*m",
+          "notes": "Zero equilibrium wheel torque."
         }
       ],
       "output_values": [
         {
-          "name": "theta",
-          "value": 2.5,
+          "name": "p_x",
+          "value": 1.0,
+          "unit": "m",
+          "notes": "Target output."
+        },
+        {
+          "name": "p_y",
+          "value": 1.0,
+          "unit": "m",
+          "notes": "Target output."
+        },
+        {
+          "name": "p_z",
+          "value": 1.0,
+          "unit": "m",
+          "notes": "Target output."
+        },
+        {
+          "name": "v_x",
+          "value": 0.0,
+          "unit": "m/s",
+          "notes": "Target output."
+        },
+        {
+          "name": "v_y",
+          "value": 0.0,
+          "unit": "m/s",
+          "notes": "Target output."
+        },
+        {
+          "name": "v_z",
+          "value": 0.0,
+          "unit": "m/s",
+          "notes": "Target output."
+        },
+        {
+          "name": "phi_x",
+          "value": 0.0,
           "unit": "rad",
-          "notes": "equilibrium output"
+          "notes": "Target output."
+        },
+        {
+          "name": "phi_y",
+          "value": 0.0,
+          "unit": "rad",
+          "notes": "Target output."
+        },
+        {
+          "name": "phi_z",
+          "value": 0.0,
+          "unit": "rad",
+          "notes": "Target output."
+        },
+        {
+          "name": "omega_x",
+          "value": 0.0,
+          "unit": "rad/s",
+          "notes": "Target output."
+        },
+        {
+          "name": "omega_y",
+          "value": 0.0,
+          "unit": "rad/s",
+          "notes": "Target output."
+        },
+        {
+          "name": "omega_z",
+          "value": 0.0,
+          "unit": "rad/s",
+          "notes": "Target output."
         }
       ],
       "assumptions": [
-        "Equilibrium defined by zero angular acceleration and zero angular velocity.",
-        "Required torque exactly cancels gravitational torque at theta = 2.5 rad."
+        "Balanced thruster bias is chosen for local signed control authority around the target despite unilateral thruster force limits."
       ],
-      "residual_description": "At the operating point, theta_dot = 0 and omega_dot = u_eq - g sin(theta_eq) = 0 since m=L=1 and u_eq = 9.81 sin(2.5) = 5.871322893124 N\u00b7m."
+      "residual_description": "At this operating point, net force = 0 and net torque = 0, so the reduced model equilibrium residual is zero."
     },
     "local_linear_model": {
-      "valid_near": "theta_2p5_eq",
+      "valid_near": "target_equilibrium",
       "state_order": [
-        "theta",
-        "omega"
+        "p_x",
+        "p_y",
+        "p_z",
+        "v_x",
+        "v_y",
+        "v_z",
+        "phi_x",
+        "phi_y",
+        "phi_z",
+        "omega_x",
+        "omega_y",
+        "omega_z"
       ],
       "input_order": [
-        "u"
+        "u_thruster_px",
+        "u_thruster_nx",
+        "u_thruster_py",
+        "u_thruster_ny",
+        "u_thruster_pz",
+        "u_thruster_nz",
+        "u_rw_x",
+        "u_rw_y",
+        "u_rw_z"
       ],
       "output_order": [
-        "theta"
+        "p_x",
+        "p_y",
+        "p_z",
+        "v_x",
+        "v_y",
+        "v_z",
+        "phi_x",
+        "phi_y",
+        "phi_z",
+        "omega_x",
+        "omega_y",
+        "omega_z"
       ],
-      "state_definition": "Deviation states are delta_theta = theta - 2.5 and delta_omega = omega - 0.",
-      "input_definition": "Deviation input is delta_u = u - 5.871322893124.",
-      "output_definition": "Deviation output is delta_y = theta - 2.5.",
+      "state_definition": "delta_x = [p_x-1, p_y-1, p_z-1, v_x, v_y, v_z, phi_x, phi_y, phi_z, omega_x, omega_y, omega_z]^T",
+      "input_definition": "delta_u = [u_thruster_px-10, u_thruster_nx-10, u_thruster_py-10, u_thruster_ny-10, u_thruster_pz-10, u_thruster_nz-10, u_rw_x, u_rw_y, u_rw_z]^T",
+      "output_definition": "delta_y = delta_x for full-state feedback/output.",
+      "feedback_coordinates": "deviation",
+      "final_control_law_template": "u_phys = u_eq + delta_u",
       "A": {
-        "rows": 2,
-        "cols": 2,
+        "rows": 12,
+        "cols": 12,
         "data": [
           [
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
             0.0,
             1.0
           ],
           [
-            7.858015860289,
-            -0.05
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
           ]
         ]
       },
       "B": {
-        "rows": 2,
-        "cols": 1,
+        "rows": 12,
+        "cols": 9,
         "data": [
           [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
             0.0
           ],
           [
-            1.0
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.03389830508474576,
+            -0.03389830508474576,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.03389830508474576,
+            -0.03389830508474576,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.03389830508474576,
+            -0.03389830508474576,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            -0.6638786430339242,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            -0.6638786430339242,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            -0.6638786430339242
           ]
         ]
       },
       "C": {
-        "rows": 1,
-        "cols": 2,
+        "rows": 12,
+        "cols": 12,
         "data": [
           [
             1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
             0.0
+          ],
+          [
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
           ]
         ]
       },
       "D": {
-        "rows": 1,
-        "cols": 1,
+        "rows": 12,
+        "cols": 9,
         "data": [
           [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
             0.0
           ]
         ]
       },
       "notes": [
-        "Linearization uses sin(theta) \u2248 sin(theta_eq) + cos(theta_eq) (theta-theta_eq).",
-        "With m=1 and L=1, omega_dot = u - 0.05 omega - 9.81 sin(theta).",
-        "Therefore delta_omega_dot = -9.81 cos(2.5) delta_theta - 0.05 delta_omega + delta_u.",
-        "Since cos(2.5) \u2248 -0.801143615547, the stiffness term becomes -9.81 cos(2.5) \u2248 7.858015860289."
+        "This is a 12-state, 9-input local model suitable for continuous-time LQR without collapsing the multi-input structure from the XML.",
+        "The translational inputs are redundant because opposing thruster pairs generate signed net forces through differential deviations around a 10 N bias.",
+        "Equivalent reduced translational channels could be formed, but the requested actuator-level input definition is preserved directly in B.",
+        "A stabilizing LQR may be synthesized from (A,B,Q,R) with actuator saturation handled outside ideal linear design."
       ],
       "assumptions": [
-        "First-order Taylor linearization about the declared equilibrium.",
-        "Model is valid for small deviations around theta = 2.5 rad."
+        "Near-target identity attitude so first-order translational/rotational coupling due to orientation error is neglected.",
+        "Wheel-speed dynamics omitted; this is appropriate if wheel torque commands are the controlled inputs and wheel momentum stays within acceptable bounds over the local maneuver horizon."
       ],
       "sanity_checks": [
-        "A is 2x2 for state order [theta, omega].",
-        "B is 2x1 for input order [u].",
-        "At theta_eq=2.5 rad, required equilibrium input is nonzero and is explicitly included.",
-        "Because cos(2.5)<0, the open-loop local linearization has positive delta_theta coefficient, indicating the operating point is locally unstable without control."
+        "A is 12x12 and B is 12x9, consistent with declared state and input orders.",
+        "Rows 4-6 of B equal 1/m times signed opposing-thruster directions with m=29.5 kg.",
+        "Rows 10-12 of B equal -1/J_i for reaction-wheel torques with J_i=1.5063 kg*m^2.",
+        "Operating point input bias [10,10,10,10,10,10,0,0,0] lies within actuator limits."
       ]
     },
     "controller_ready": {
-      "model_class": "second_order_siso",
-      "second_order": {
-        "valid": true,
-        "form": "delta_y_ddot + a1*delta_y_dot + a0*delta_y = b0*delta_u",
-        "y_name": "theta",
-        "ydot_name": "omega",
-        "y_index_in_state": 0,
-        "ydot_index_in_state": 1,
-        "a0": -7.858015860289,
-        "a1": 0.05,
-        "b0": 1.0,
-        "assumptions": [
-          "Controlled output is pendulum angle theta.",
-          "Deviation coordinates are taken about theta_eq=2.5 rad and u_eq=5.871322893124 N\u00b7m.",
-          "Mass and length are both 1, so input gain to angular acceleration is 1."
-        ],
-        "notes": [
-          "From the local model: delta_theta_ddot = 7.858015860289 delta_theta - 0.05 delta_theta_dot + delta_u.",
-          "Rearranged into canonical form: delta_theta_ddot + 0.05 delta_theta_dot - 7.858015860289 delta_theta = delta_u."
-        ]
-      },
+      "model_class": "general_mimo",
+      "second_order": null,
       "notes": [
-        "Suitable local PID plant form around the specified nonzero equilibrium.",
-        "A nonzero bias torque u_eq must be added to the controller output to hold the operating point."
+        "Controller family requested is LQR, so the controller-ready object indicates a general MIMO local linear model rather than a second-order SISO form.",
+        "Use continuous-time LQR on the provided deviation model: delta_x_dot = A delta_x + B delta_u."
       ],
       "assumptions": [
-        "PID is designed on deviation variables around the specified equilibrium."
+        "Full state is available or estimated for feedback.",
+        "Input saturation must be enforced after computing the nominal LQR command."
       ],
       "sanity_checks": [
-        "Indices match local_linear_model.state_order = [theta, omega].",
-        "Canonical coefficients correspond exactly to the provided local linearization."
+        "LQR law should be implemented in deviation coordinates and mapped back with u_phys = u_eq - K(x - x_eq)."
       ]
     },
     "ode": [
-      "theta_dot = omega",
-      "omega_dot = (1/(m*L^2))*(u - b*omega - m*g*L*sin(theta))",
-      "With m=1, L=1, g=9.81, b=0.05: omega_dot = u - 0.05*omega - 9.81*sin(theta)"
+      "p_x_dot = v_x",
+      "p_y_dot = v_y",
+      "p_z_dot = v_z",
+      "v_x_dot = (u_thruster_px - u_thruster_nx)/29.5",
+      "v_y_dot = (u_thruster_py - u_thruster_ny)/29.5",
+      "v_z_dot = (u_thruster_pz - u_thruster_nz)/29.5",
+      "phi_x_dot = omega_x",
+      "phi_y_dot = omega_y",
+      "phi_z_dot = omega_z",
+      "omega_x_dot = -u_rw_x/1.5063",
+      "omega_y_dot = -u_rw_y/1.5063",
+      "omega_z_dot = -u_rw_z/1.5063"
     ],
     "state_space": [
-      "Operating point: theta_eq = 2.5 rad, omega_eq = 0 rad/s, u_eq = 5.871322893124 N\u00b7m",
-      "Deviation variables: delta_theta = theta - 2.5, delta_omega = omega, delta_u = u - 5.871322893124",
-      "Linearized model: [delta_theta_dot; delta_omega_dot] = A [delta_theta; delta_omega] + B delta_u",
-      "A = [[0, 1], [7.858015860289, -0.05]]",
-      "B = [[0], [1]]",
-      "C = [[1, 0]]",
-      "D = [[0]]",
-      "Equivalent second-order form: delta_theta_ddot + 0.05 delta_theta_dot - 7.858015860289 delta_theta = delta_u"
+      "State order: [p_x, p_y, p_z, v_x, v_y, v_z, phi_x, phi_y, phi_z, omega_x, omega_y, omega_z]^T",
+      "Input order: [u_thruster_px, u_thruster_nx, u_thruster_py, u_thruster_ny, u_thruster_pz, u_thruster_nz, u_rw_x, u_rw_y, u_rw_z]^T",
+      "Equilibrium state x_eq = [1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]^T",
+      "Equilibrium input u_eq = [10, 10, 10, 10, 10, 10, 0, 0, 0]^T",
+      "Deviation dynamics: delta_x_dot = A delta_x + B delta_u",
+      "Recommended continuous-time LQR weights Q = diag([100, 100, 100, 20, 20, 20, 150, 150, 150, 25, 25, 25])",
+      "Recommended continuous-time LQR weights R = diag([0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 1.0, 1.0, 1.0])",
+      "Feedback law: u = u_eq - K (x - x_eq)",
+      "Apply actuator saturation after feedback: thrusters clamp to [0,20] N; reaction wheels clamp to [-5,5] N*m"
     ],
     "notes": [
-      "The specified operating angle 2.5 rad is not a zero-torque equilibrium; a constant holding torque is required.",
-      "This is a local model for stabilization near theta = 2.5 rad, appropriate for PID design with torque bias compensation."
+      "Required LQR design weights included here because the schema has no dedicated Q/R fields.",
+      "Q matrix = diag([100, 100, 100, 20, 20, 20, 150, 150, 150, 25, 25, 25]).",
+      "R matrix = diag([0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 1.0, 1.0, 1.0]).",
+      "These Q and R choices are reasonable starting weights for waypoint regulation with strong position and attitude penalties and moderate control effort penalty.",
+      "x_eq = [1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]^T.",
+      "u_eq = [10, 10, 10, 10, 10, 10, 0, 0, 0]^T.",
+      "Continuous-time LQR law: u = u_eq - K(x - x_eq), where K is obtained from the CARE using the provided A, B, Q, R.",
+      "If wheel-speed accumulation becomes important in implementation, augment the model with wheel angular rates and momentum constraints; the present model is the simplest faithful local actuator-level model for LQR near the target."
     ]
   },
   "controller": {
-    "controller_type": "PD",
-    "controller_name": null,
+    "controller_type": "LQR",
+    "controller_name": "local_lqr_controller",
     "required_signals": [
-      "theta_ref",
-      "theta",
-      "d(theta)/dt"
+      "p_x",
+      "p_y",
+      "p_z",
+      "v_x",
+      "v_y",
+      "v_z",
+      "phi_x",
+      "phi_y",
+      "phi_z",
+      "omega_x",
+      "omega_y",
+      "omega_z"
     ],
     "control_law": [
-      "e = theta_ref - theta",
-      "u = 5.871323 + 19.304107*e - 3.950000*d(theta)/dt"
+      "delta_x = [p_x-1, p_y-1, p_z-1, v_x, v_y, v_z, phi_x, phi_y, phi_z, omega_x, omega_y, omega_z]^T",
+      "delta_u = [u_thruster_px-10, u_thruster_nx-10, u_thruster_py-10, u_thruster_ny-10, u_thruster_pz-10, u_thruster_nz-10, u_rw_x, u_rw_y, u_rw_z]^T",
+      "delta_u = -K delta_x,  K = [[24.99999999999993, 4.585929882794076e-16, 1.4282120394549107e-14, 29.368350311176766, 4.176010838299039e-15, -6.6451263344858945e-15, 3.004219087897551e-16, 1.6312574455004195e-15, -6.688887971706676e-16, 7.339153966514102e-16, 1.6864371502155512e-16, -8.865352007708477e-17], [-24.99999999999993, -4.585929882794076e-16, -1.4282120394549107e-14, -29.368350311176766, -4.176010838299039e-15, 6.6451263344858945e-15, -3.004219087897551e-16, -1.6312574455004195e-15, 6.688887971706676e-16, -7.339153966514102e-16, -1.6864371502155512e-16, 8.865352007708477e-17], [1.3429277763310968e-14, 25.00000000000002, -2.6646025113639574e-14, 4.176010838299039e-15, 29.368350311176794, 2.0107350798488482e-14, -2.6177886560620657e-14, -1.5175846316210033e-15, 1.2257271398198443e-15, -1.0725459508157788e-14, -6.709540142877235e-16, 3.3916668455137286e-15], [-1.3429277763310968e-14, -25.00000000000002, 2.6646025113639574e-14, -4.176010838299039e-15, -29.368350311176794, -2.0107350798488482e-14, 2.6177886560620657e-14, 1.5175846316210033e-15, -1.2257271398198443e-15, 1.0725459508157788e-14, 6.709540142877235e-16, -3.3916668455137286e-15], [-9.336541290803219e-15, -1.603234618625492e-14, 24.999999999999893, -6.6451263344858945e-15, 2.0107350798488482e-14, 29.36835031117684, -6.320260744290583e-15, 2.204861208707829e-14, 1.6190839097064963e-14, -2.347509310344819e-15, 3.741688378878889e-15, 3.2151400088402124e-15], [9.336541290803219e-15, 1.603234618625492e-14, -24.999999999999893, 6.6451263344858945e-15, -2.0107350798488482e-14, -29.36835031117684, 6.320260744290583e-15, -2.204861208707829e-14, -1.6190839097064963e-14, 2.347509310344819e-15, -3.741688378878889e-15, -3.2151400088402124e-15], [-8.420585772127045e-16, 2.5823837255709923e-14, -1.5116939736113672e-15, -1.9164409800138605e-15, 2.8006920449818296e-14, 6.129947762147472e-15, -15.811388300841868, 7.0925289030749446e-15, -8.075932712529078e-15, -9.449869629171607, -6.550925489656253e-15, -2.0777888674775182e-15], [7.114673527802628e-16, 2.5596066843456107e-15, 5.545608237008699e-16, -4.403719120265253e-16, 1.752032692804426e-15, -9.770506214261955e-15, 4.750738632355006e-15, -15.811388300841907, 1.37647325787967e-14, -6.550925489656253e-15, -9.449869629171607, -5.945613056089644e-15], [4.128943080754142e-17, -8.93413989647453e-15, -8.677646746193726e-15, 2.3149703586189277e-16, -8.856510386556365e-15, -8.395553625849482e-15, 1.856201531606839e-15, 1.3228957253366932e-14, -15.81138830084193, -2.0777888674775182e-15, -5.945613056089644e-15, -9.449869629171625]]",
+      "u_phys = u_eq + delta_u"
     ],
     "parameters": [
       {
-        "name": "Kp",
-        "meaning": "proportional gain",
-        "unit": "controller-dependent",
-        "value": "19.304107",
-        "notes": "model-based tuning"
+        "name": "K",
+        "meaning": "LQR feedback gain for state order ['p_x', 'p_y', 'p_z', 'v_x', 'v_y', 'v_z', 'phi_x', 'phi_y', 'phi_z', 'omega_x', 'omega_y', 'omega_z']",
+        "unit": "(depends on input/state units)",
+        "value": "[[24.99999999999993, 4.585929882794076e-16, 1.4282120394549107e-14, 29.368350311176766, 4.176010838299039e-15, -6.6451263344858945e-15, 3.004219087897551e-16, 1.6312574455004195e-15, -6.688887971706676e-16, 7.339153966514102e-16, 1.6864371502155512e-16, -8.865352007708477e-17], [-24.99999999999993, -4.585929882794076e-16, -1.4282120394549107e-14, -29.368350311176766, -4.176010838299039e-15, 6.6451263344858945e-15, -3.004219087897551e-16, -1.6312574455004195e-15, 6.688887971706676e-16, -7.339153966514102e-16, -1.6864371502155512e-16, 8.865352007708477e-17], [1.3429277763310968e-14, 25.00000000000002, -2.6646025113639574e-14, 4.176010838299039e-15, 29.368350311176794, 2.0107350798488482e-14, -2.6177886560620657e-14, -1.5175846316210033e-15, 1.2257271398198443e-15, -1.0725459508157788e-14, -6.709540142877235e-16, 3.3916668455137286e-15], [-1.3429277763310968e-14, -25.00000000000002, 2.6646025113639574e-14, -4.176010838299039e-15, -29.368350311176794, -2.0107350798488482e-14, 2.6177886560620657e-14, 1.5175846316210033e-15, -1.2257271398198443e-15, 1.0725459508157788e-14, 6.709540142877235e-16, -3.3916668455137286e-15], [-9.336541290803219e-15, -1.603234618625492e-14, 24.999999999999893, -6.6451263344858945e-15, 2.0107350798488482e-14, 29.36835031117684, -6.320260744290583e-15, 2.204861208707829e-14, 1.6190839097064963e-14, -2.347509310344819e-15, 3.741688378878889e-15, 3.2151400088402124e-15], [9.336541290803219e-15, 1.603234618625492e-14, -24.999999999999893, 6.6451263344858945e-15, -2.0107350798488482e-14, -29.36835031117684, 6.320260744290583e-15, -2.204861208707829e-14, -1.6190839097064963e-14, 2.347509310344819e-15, -3.741688378878889e-15, -3.2151400088402124e-15], [-8.420585772127045e-16, 2.5823837255709923e-14, -1.5116939736113672e-15, -1.9164409800138605e-15, 2.8006920449818296e-14, 6.129947762147472e-15, -15.811388300841868, 7.0925289030749446e-15, -8.075932712529078e-15, -9.449869629171607, -6.550925489656253e-15, -2.0777888674775182e-15], [7.114673527802628e-16, 2.5596066843456107e-15, 5.545608237008699e-16, -4.403719120265253e-16, 1.752032692804426e-15, -9.770506214261955e-15, 4.750738632355006e-15, -15.811388300841907, 1.37647325787967e-14, -6.550925489656253e-15, -9.449869629171607, -5.945613056089644e-15], [4.128943080754142e-17, -8.93413989647453e-15, -8.677646746193726e-15, 2.3149703586189277e-16, -8.856510386556365e-15, -8.395553625849482e-15, 1.856201531606839e-15, 1.3228957253366932e-14, -15.81138830084193, -2.0777888674775182e-15, -5.945613056089644e-15, -9.449869629171625]]",
+        "notes": "Computed from CARE; operating point target_equilibrium"
       },
       {
-        "name": "Ki",
-        "meaning": "integral gain",
-        "unit": "controller-dependent",
-        "value": "0.000000",
-        "notes": "0 for P/PD; heuristic initial value for PI/PID"
+        "name": "p_x_eq",
+        "meaning": "operating-point value for state p_x",
+        "unit": "m",
+        "value": "1.0",
+        "notes": "target equilibrium position x"
       },
       {
-        "name": "Kd",
-        "meaning": "derivative gain",
-        "unit": "controller-dependent",
-        "value": "3.950000",
-        "notes": "0 for P/PI"
+        "name": "p_y_eq",
+        "meaning": "operating-point value for state p_y",
+        "unit": "m",
+        "value": "1.0",
+        "notes": "target equilibrium position y"
       },
       {
-        "name": "u_eq",
-        "meaning": "equilibrium/bias input required to hold the operating point",
-        "unit": "same as control input",
-        "value": "5.871323",
-        "notes": "Add this feedforward term before the feedback correction."
+        "name": "p_z_eq",
+        "meaning": "operating-point value for state p_z",
+        "unit": "m",
+        "value": "1.0",
+        "notes": "target equilibrium position z"
+      },
+      {
+        "name": "v_x_eq",
+        "meaning": "operating-point value for state v_x",
+        "unit": "m/s",
+        "value": "0.0",
+        "notes": "target equilibrium velocity x"
+      },
+      {
+        "name": "v_y_eq",
+        "meaning": "operating-point value for state v_y",
+        "unit": "m/s",
+        "value": "0.0",
+        "notes": "target equilibrium velocity y"
+      },
+      {
+        "name": "v_z_eq",
+        "meaning": "operating-point value for state v_z",
+        "unit": "m/s",
+        "value": "0.0",
+        "notes": "target equilibrium velocity z"
+      },
+      {
+        "name": "phi_x_eq",
+        "meaning": "operating-point value for state phi_x",
+        "unit": "rad",
+        "value": "0.0",
+        "notes": "small-angle attitude error about target quaternion [1,0,0,0]"
+      },
+      {
+        "name": "phi_y_eq",
+        "meaning": "operating-point value for state phi_y",
+        "unit": "rad",
+        "value": "0.0",
+        "notes": "small-angle attitude error about target quaternion [1,0,0,0]"
+      },
+      {
+        "name": "phi_z_eq",
+        "meaning": "operating-point value for state phi_z",
+        "unit": "rad",
+        "value": "0.0",
+        "notes": "small-angle attitude error about target quaternion [1,0,0,0]"
+      },
+      {
+        "name": "omega_x_eq",
+        "meaning": "operating-point value for state omega_x",
+        "unit": "rad/s",
+        "value": "0.0",
+        "notes": "target equilibrium angular rate x"
+      },
+      {
+        "name": "omega_y_eq",
+        "meaning": "operating-point value for state omega_y",
+        "unit": "rad/s",
+        "value": "0.0",
+        "notes": "target equilibrium angular rate y"
+      },
+      {
+        "name": "omega_z_eq",
+        "meaning": "operating-point value for state omega_z",
+        "unit": "rad/s",
+        "value": "0.0",
+        "notes": "target equilibrium angular rate z"
+      },
+      {
+        "name": "u_thruster_px_eq",
+        "meaning": "operating-point value for input u_thruster_px",
+        "unit": "N",
+        "value": "10.0",
+        "notes": "balanced nominal thrust at operating point"
+      },
+      {
+        "name": "u_thruster_nx_eq",
+        "meaning": "operating-point value for input u_thruster_nx",
+        "unit": "N",
+        "value": "10.0",
+        "notes": "balanced nominal thrust at operating point"
+      },
+      {
+        "name": "u_thruster_py_eq",
+        "meaning": "operating-point value for input u_thruster_py",
+        "unit": "N",
+        "value": "10.0",
+        "notes": "balanced nominal thrust at operating point"
+      },
+      {
+        "name": "u_thruster_ny_eq",
+        "meaning": "operating-point value for input u_thruster_ny",
+        "unit": "N",
+        "value": "10.0",
+        "notes": "balanced nominal thrust at operating point"
+      },
+      {
+        "name": "u_thruster_pz_eq",
+        "meaning": "operating-point value for input u_thruster_pz",
+        "unit": "N",
+        "value": "10.0",
+        "notes": "balanced nominal thrust at operating point"
+      },
+      {
+        "name": "u_thruster_nz_eq",
+        "meaning": "operating-point value for input u_thruster_nz",
+        "unit": "N",
+        "value": "10.0",
+        "notes": "balanced nominal thrust at operating point"
+      },
+      {
+        "name": "u_rw_x_eq",
+        "meaning": "operating-point value for input u_rw_x",
+        "unit": "N*m",
+        "value": "0.0",
+        "notes": "zero reaction-wheel torque at equilibrium"
+      },
+      {
+        "name": "u_rw_y_eq",
+        "meaning": "operating-point value for input u_rw_y",
+        "unit": "N*m",
+        "value": "0.0",
+        "notes": "zero reaction-wheel torque at equilibrium"
+      },
+      {
+        "name": "u_rw_z_eq",
+        "meaning": "operating-point value for input u_rw_z",
+        "unit": "N*m",
+        "value": "0.0",
+        "notes": "zero reaction-wheel torque at equilibrium"
       }
     ],
     "assumptions": [
-      "Plant is approximated as a SISO second-order linear model near an operating point.",
-      "Canonical form used: G(s) = b0 / (s^2 + a1 s + a0).",
-      "This tuning is intended as an initial design and should be validated in simulation."
+      "Valid near the linearization point (local stabilization).",
+      "Model linearization matches the implemented deviation-state definitions."
     ],
     "implementation_notes": [
-      "Controller form: parallel",
-      "Selected structure: PD",
-      "dt = 0.0100 s",
-      "Anti-windup: none",
-      "Derivative filter is intentionally omitted in this simplified version.",
-      "Apply saturation: |u| <= 5.000000",
-      "Target mapping (2% settling-time): zeta=0.591, wn=3.383 rad/s",
-      "Canonical coefficients used: a1=0.050000, a0=-7.858016, b0=1.000000",
-      "PD gains from exact second-order coefficient matching on the local deviation model."
+      "Operating point: target_equilibrium",
+      "Uses deviation variables: delta_x = [p_x-1, p_y-1, p_z-1, v_x, v_y, v_z, phi_x, phi_y, phi_z, omega_x, omega_y, omega_z]^T; delta_u = [u_thruster_px-10, u_thruster_nx-10, u_thruster_py-10, u_thruster_ny-10, u_thruster_pz-10, u_thruster_nz-10, u_rw_x, u_rw_y, u_rw_z]^T",
+      "Add input saturation if actuator limits exist.",
+      "If using discrete control in simulation, set discrete=True and provide dt_s.",
+      "Continuous-time LQR built directly on the provided deviation-coordinate linearization near the target equilibrium.",
+      "Q weights position and attitude errors more strongly than velocity and angular-rate errors to prioritize accurate point-to-point regulation with calm terminal motion.",
+      "Attitude-error weights are slightly higher than position weights because the reaction-wheel attitude channels are strong and the objective explicitly requires attitude stabilization near the goal.",
+      "R penalizes individual thruster deviations lightly but non-negligibly; with paired thrusters around a 10 N bias, this discourages excessive differential thrust while preserving translational authority.",
+      "Reaction-wheel torque inputs are weighted more heavily than thruster deviations because wheel torques have high angular acceleration authority in the supplied B matrix and should be moderated to avoid aggressive attitude actuation.",
+      "A and B are reused exactly from the upstream local linear model; no model reduction or operating-point change was introduced.",
+      "This package assumes small-angle attitude coordinates phi_x, phi_y, phi_z as the local error representation about quaternion [1,0,0,0]."
     ],
-    "designed_for_operating_point": null,
-    "designed_for_linear_model": null,
-    "uses_deviation_variables": null,
-    "state_order": [],
-    "input_order": [],
-    "physical_state_eq": [],
-    "physical_input_eq": []
+    "designed_for_operating_point": "target_equilibrium",
+    "designed_for_linear_model": "target_equilibrium",
+    "uses_deviation_variables": true,
+    "state_order": [
+      "p_x",
+      "p_y",
+      "p_z",
+      "v_x",
+      "v_y",
+      "v_z",
+      "phi_x",
+      "phi_y",
+      "phi_z",
+      "omega_x",
+      "omega_y",
+      "omega_z"
+    ],
+    "input_order": [
+      "u_thruster_px",
+      "u_thruster_nx",
+      "u_thruster_py",
+      "u_thruster_ny",
+      "u_thruster_pz",
+      "u_thruster_nz",
+      "u_rw_x",
+      "u_rw_y",
+      "u_rw_z"
+    ],
+    "physical_state_eq": [
+      {
+        "name": "p_x",
+        "value": 1.0,
+        "unit": "m",
+        "notes": "target equilibrium position x"
+      },
+      {
+        "name": "p_y",
+        "value": 1.0,
+        "unit": "m",
+        "notes": "target equilibrium position y"
+      },
+      {
+        "name": "p_z",
+        "value": 1.0,
+        "unit": "m",
+        "notes": "target equilibrium position z"
+      },
+      {
+        "name": "v_x",
+        "value": 0.0,
+        "unit": "m/s",
+        "notes": "target equilibrium velocity x"
+      },
+      {
+        "name": "v_y",
+        "value": 0.0,
+        "unit": "m/s",
+        "notes": "target equilibrium velocity y"
+      },
+      {
+        "name": "v_z",
+        "value": 0.0,
+        "unit": "m/s",
+        "notes": "target equilibrium velocity z"
+      },
+      {
+        "name": "phi_x",
+        "value": 0.0,
+        "unit": "rad",
+        "notes": "small-angle attitude error about target quaternion [1,0,0,0]"
+      },
+      {
+        "name": "phi_y",
+        "value": 0.0,
+        "unit": "rad",
+        "notes": "small-angle attitude error about target quaternion [1,0,0,0]"
+      },
+      {
+        "name": "phi_z",
+        "value": 0.0,
+        "unit": "rad",
+        "notes": "small-angle attitude error about target quaternion [1,0,0,0]"
+      },
+      {
+        "name": "omega_x",
+        "value": 0.0,
+        "unit": "rad/s",
+        "notes": "target equilibrium angular rate x"
+      },
+      {
+        "name": "omega_y",
+        "value": 0.0,
+        "unit": "rad/s",
+        "notes": "target equilibrium angular rate y"
+      },
+      {
+        "name": "omega_z",
+        "value": 0.0,
+        "unit": "rad/s",
+        "notes": "target equilibrium angular rate z"
+      }
+    ],
+    "physical_input_eq": [
+      {
+        "name": "u_thruster_px",
+        "value": 10.0,
+        "unit": "N",
+        "notes": "balanced nominal thrust at operating point"
+      },
+      {
+        "name": "u_thruster_nx",
+        "value": 10.0,
+        "unit": "N",
+        "notes": "balanced nominal thrust at operating point"
+      },
+      {
+        "name": "u_thruster_py",
+        "value": 10.0,
+        "unit": "N",
+        "notes": "balanced nominal thrust at operating point"
+      },
+      {
+        "name": "u_thruster_ny",
+        "value": 10.0,
+        "unit": "N",
+        "notes": "balanced nominal thrust at operating point"
+      },
+      {
+        "name": "u_thruster_pz",
+        "value": 10.0,
+        "unit": "N",
+        "notes": "balanced nominal thrust at operating point"
+      },
+      {
+        "name": "u_thruster_nz",
+        "value": 10.0,
+        "unit": "N",
+        "notes": "balanced nominal thrust at operating point"
+      },
+      {
+        "name": "u_rw_x",
+        "value": 0.0,
+        "unit": "N*m",
+        "notes": "zero reaction-wheel torque at equilibrium"
+      },
+      {
+        "name": "u_rw_y",
+        "value": 0.0,
+        "unit": "N*m",
+        "notes": "zero reaction-wheel torque at equilibrium"
+      },
+      {
+        "name": "u_rw_z",
+        "value": 0.0,
+        "unit": "N*m",
+        "notes": "zero reaction-wheel torque at equilibrium"
+      }
+    ]
   },
   "qc": [
     {
       "step": "strategy(parse+plan)",
       "passed": true,
-      "notes": "PID"
+      "notes": "LQR"
     },
     {
       "step": "modeling",
       "passed": true,
-      "notes": "Simple Pendulum"
+      "notes": "MuJoCo Space Robot with 6 Thrusters and 3 Reaction Wheels"
     },
     {
-      "step": "control(PID+solve)",
+      "step": "control(LQR+solve)",
       "passed": true,
-      "notes": "PD numeric gains computed"
+      "notes": "numeric K computed"
     }
   ]
 }

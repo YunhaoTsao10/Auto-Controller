@@ -123,6 +123,8 @@ def _llm_make_lqr_spec(client: OpenAI, spec: Spec, model: DynamicsModel) -> LQRS
             f"input_order: {llm.input_order}\n"
             f"state_definition: {llm.state_definition}\n"
             f"input_definition: {llm.input_definition}\n"
+            f"feedback_coordinates: {getattr(llm, 'feedback_coordinates', 'deviation')}\n"
+            f"final_control_law_template: {getattr(llm, 'final_control_law_template', 'u_phys = u_eq + delta_u')}\n"
             f"A: {llm.A.data}\n"
             f"B: {llm.B.data}\n"
             f"C: {None if llm.C is None else llm.C.data}\n"
@@ -130,20 +132,22 @@ def _llm_make_lqr_spec(client: OpenAI, spec: Spec, model: DynamicsModel) -> LQRS
         )
 
     system = (
-        "You are a control engineer. We will implement LQR.\n"
-        "Given the dynamics model, produce an LQR design package using the provided local linear model whenever available.\n"
+        "You are a control engineer preparing weighting choices for LQR synthesis.\n"
+        "A controller-ready operating point and local linear model have already been identified upstream.\n"
+        "Your job is to preserve that upstream structure and only choose a consistent LQR design package.\n"
         "Output MUST follow the schema exactly.\n\n"
         "Rules:\n"
-        "- Reuse the operating point and local linear model already identified in the model instead of inventing a different one.\n"
-        "- Provide numeric A,B,Q,R and a clear state/input order.\n"
-        "- state_order must match the linear-model state order.\n"
-        "- input_order must match the model input names.\n"
-        "- If you use deviation variables, they must be consistent with the operating point.\n"
-        "- Set physical_state_eq and physical_input_eq from the operating point values.\n"
-        "- Choose Q,R using a principled heuristic (e.g., penalize configuration error more than velocity; penalize control effort).\n"
-        "- Keep dimensions consistent.\n"
-        "- If a local linear model is already available in the model, do not alter A or B unless there is an obvious inconsistency.\n"
-        "- Notes should mention the operating point and weighting rationale.\n"
+        "- Treat the upstream operating point as the source of truth for physical equilibrium values.\n"
+        "- Treat the upstream local linear model as the source of truth for deviation-coordinate definitions and for A,B matrices.\n"
+        "- Do not invent a different operating point.\n"
+        "- Do not alter state_order, input_order, deviation_state_definition, deviation_input_definition, or final_control_law_template unless there is an obvious inconsistency.\n"
+        "- Reuse the provided A and B matrices exactly whenever they are already available and dimensionally consistent.\n"
+        "- Your main task is to choose numeric Q and R matrices and provide concise notes explaining the weighting rationale.\n"
+        "- Q and R must be dimensionally consistent with the provided A and B.\n"
+        "- Prefer principled heuristics: penalize configuration/state error more than rate error when appropriate, and penalize excessive control effort.\n"
+        "- Preserve uses_deviation_variables if the upstream model uses deviation coordinates.\n"
+        "- physical_state_eq and physical_input_eq must come directly from the upstream operating point.\n"
+        "- Do not restate the final controller gain K here; K will be solved deterministically downstream.\n"
     )
 
     user = (
@@ -206,20 +210,12 @@ def _build_lqr_controller_from_spec(model: DynamicsModel, lqr: LQRSpec) -> Contr
         discrete=False,
     )
 
-    input_name = input_order[0] if len(input_order) == 1 else "u"
-    if K.shape[0] == 1:
-        x_expr = " + ".join([f"{K[0, i]:.6f}*{name}" for i, name in enumerate(lqr.state_order)])
-        law = [
-            f"delta_x = [{', '.join(lqr.state_order)}]^T (deviation-state order)",
-            f"delta_{input_name} = -({x_expr})",
-            f"{input_name} = {input_name}_eq + delta_{input_name}",
-        ]
-    else:
-        law = [
-            f"delta_x = [{', '.join(lqr.state_order)}]^T (deviation-state order)",
-            f"delta_u = -K delta_x,  K = {K.tolist()}",
-            f"u = u_eq + delta_u",
-        ]
+    law = [
+        f"{lqr.deviation_state_definition}",
+        f"{lqr.deviation_input_definition}",
+        f"delta_u = -K delta_x,  K = {K.tolist()}",
+        f"{lqr.final_control_law_template}",
+    ]
 
     params = [
         Parameter(

@@ -33,6 +33,7 @@ class LQRSpec(BaseModel):
     uses_deviation_variables: bool = True
     deviation_state_definition: str = "delta_x = x - x_eq"
     deviation_input_definition: str = "delta_u = u - u_eq"
+    final_control_law_template: str = "u_phys = u_eq + delta_u"
 
     physical_state_eq: list[NamedValue] = Field(default_factory=list)
     physical_input_eq: list[NamedValue] = Field(default_factory=list)
