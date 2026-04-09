@@ -295,12 +295,12 @@ def render_controller_markdown(snapshot: dict[str, Any]) -> str:
 DEFAULT_PROMPT = (
     "Please model a simple pendulum and design a local PD stabilizing controller around "
     "theta = 2.5 rad. Use m = 1 kg, L = 1 m, g = 9.81 m/s^2, and damping b = 0.05. "
-    "Target less than 10% overshoot and settling time around 2 seconds."
+    "Target less than 1% overshoot and settling time around 1 seconds."
 )
 
 # Please model a mass-spring-damper system and design a local stabilizing PD controller around x = 1.0 m.
 # Use m = 1.0 kg, c = 0.4 N·s/m, k = 4.0 N/m.
-# Target less than 10% overshoot and settling time around 2 seconds.
+# Target less than 1% overshoot and settling time around 1 seconds.
 
 # The uploaded robot.xml describes a free-floating space robot in MuJoCo.
 # Task:
@@ -322,14 +322,14 @@ DEFAULT_PROMPT = (
 # Control objective:
 # Move the robot from an initial waypoint to a target waypoint in free space while stabilizing attitude.
 # Initial desired state:
-# position = [x0, y0, z0]
+# position = [0, 0, 0]
 # velocity = [0, 0, 0]
 # quaternion = [1, 0, 0, 0]
 # angular_velocity = [0, 0, 0]
 # Target desired state:
-# position = [xg, yg, zg]
+# position = [1, 1, 1]
 # velocity = [0, 0, 0]
-# quaternion = [1, 0, 0, 0]
+# quaternion = [0.9186, 0.1768, 0.3062, 0.1768]
 # angular_velocity = [0, 0, 0]
 # Important:
 # - Treat this as a multi-input multi-state spacecraft control problem.
