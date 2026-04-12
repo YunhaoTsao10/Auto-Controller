@@ -1,0 +1,94 @@
+<mujoco model="space_robot">
+  <compiler angle="degree"/>
+  <option gravity="0 0 0" integrator="RK4" timestep="0.002"/>
+
+  <asset>
+    <mesh name="iss_mesh" file="iss_raw_export.obj" scale="1 1 1"/>
+  </asset>
+
+  <worldbody>
+      <!-- impact ball -->
+    <body name="iss_body" pos="5.0 0.0 0.0">
+        
+        <freejoint name="iss_free"/>
+        
+        <geom name="iss_geom" type="mesh" mesh="iss_mesh"
+            rgba="0.9 0.9 0.9 1"
+            mass="1000.0"
+            contype="0"
+            conaffinity="0"/>
+    </body>
+
+    <!-- main body: 0.6 m cube, mass=25 kg -->
+    <body name="robot" pos="0 0 0">
+      <freejoint/>
+      <geom type="box" size="0.3 0.3 0.3" rgba="1.0 0.0 1.0 1.0" mass="25"/>
+
+      <!-- Thruster sites on each face (visual markers) -->
+      <site name="thruster_px" pos=" 0.3  0.0  0.0" size="0.03" rgba="1 0 0 1"/>
+      <site name="thruster_nx" pos="-0.3  0.0  0.0" size="0.03" rgba="1 0 0 1"/>
+      <site name="thruster_py" pos=" 0.0  0.3  0.0" size="0.03" rgba="0 1 0 1"/>
+      <site name="thruster_ny" pos=" 0.0 -0.3  0.0" size="0.03" rgba="0 1 0 1"/>
+      <site name="thruster_pz" pos=" 0.0  0.0  0.3" size="0.03" rgba="0 0 1 1"/>
+      <site name="thruster_nz" pos=" 0.0  0.0 -0.3" size="0.03" rgba="0 0 1 1"/>
+
+      <!-- ==================== Reaction wheels ==================== -->
+      <!-- X-axis wheel (about +X) -->
+      <body name="reaction_wheel_x" pos="0 0 0">
+        <joint name="rw_x" type="hinge" axis="1 0 0" limited="false" damping="0.04"/>
+
+        <inertial pos="0 0 0" mass="1.5" diaginertia="0.006075 0.00315 0.00315"/>
+        <geom type="cylinder" fromto="-0.015 0 0  0.015 0 0" size="0.09"
+              rgba="1 1 0 1" contype="0" conaffinity="0"/>
+      </body>
+
+      <!-- Y-axis wheel (about +Y) -->
+      <body name="reaction_wheel_y" pos="0 0 0">
+        <joint name="rw_y" type="hinge" axis="0 1 0" limited="false" damping="0.04"/>
+
+        <inertial pos="0 0 0" mass="1.5" diaginertia="0.00315 0.006075 0.00315"/>
+        <geom type="cylinder" fromto="0 -0.015 0  0 0.015 0" size="0.09"
+              rgba="1 1 0 1" contype="0" conaffinity="0"/>
+      </body>
+
+      <!-- Z-axis wheel (about +Z) -->
+      <body name="reaction_wheel_z" pos="0 0 0">
+        <joint name="rw_z" type="hinge" axis="0 0 1" limited="false" damping="0.04"/>
+
+        <inertial pos="0 0 0" mass="1.5" diaginertia="0.00315 0.00315 0.006075"/>
+        <geom type="cylinder" fromto="0 0 -0.015  0 0 0.015" size="0.09"
+              rgba="1 1 0 1" contype="0" conaffinity="0"/>
+      </body>
+
+      <!-- ========================================================================== -->
+
+    </body>
+  </worldbody>
+
+  <actuator>
+    <!-- ==================== Thrusters (force actuators) ==================== -->
+    <!-- ctrl in Newtons; gear is direction in body frame -->
+    <general name="thruster_px" site="thruster_px" gear=" 1  0  0"
+             ctrllimited="true" ctrlrange="0 20.0"/>
+    <general name="thruster_nx" site="thruster_nx" gear="-1  0  0"
+             ctrllimited="true" ctrlrange="0 20.0"/>
+    <general name="thruster_py" site="thruster_py" gear=" 0  1  0"
+             ctrllimited="true" ctrlrange="0 20.0"/>
+    <general name="thruster_ny" site="thruster_ny" gear=" 0 -1  0"
+             ctrllimited="true" ctrlrange="0 20.0"/>
+    <general name="thruster_pz" site="thruster_pz" gear=" 0  0  1"
+             ctrllimited="true" ctrlrange="0 20.0"/>
+    <general name="thruster_nz" site="thruster_nz" gear=" 0  0 -1"
+             ctrllimited="true" ctrlrange="0 20.0"/>
+
+    <!-- ==================== Reaction wheels: torque actuators ==================== -->
+    <motor name="rw_x" joint="rw_x" gear="1"
+        ctrllimited="true" ctrlrange="-5.0 5.0"/>
+    <motor name="rw_y" joint="rw_y" gear="1"
+        ctrllimited="true" ctrlrange="-5.0 5.0"/>
+    <motor name="rw_z" joint="rw_z" gear="1"
+        ctrllimited="true" ctrlrange="-5.0 5.0"/>
+
+
+  </actuator>
+</mujoco>
