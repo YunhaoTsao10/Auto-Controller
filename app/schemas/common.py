@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-
+from typing import Literal
 
 class DesignTarget(BaseModel):
     dt_s: str = "0.01"
@@ -34,6 +34,27 @@ class StrategyOutput(BaseModel):
 
 
 class QCReport(BaseModel):
-    step: str
-    passed: bool
-    notes: str = ""
+    step: Literal["strategy", "model", "control"]
+    reviewer: str = Field(..., description="Name of the QC agent")
+    passed: bool = Field(..., description="True only when verdict is pass")
+
+    verdict: Literal["pass", "retry", "stop"] = Field(
+        ..., description="Workflow decision made by the QC agent"
+    )
+    retry_target: Literal["strategy", "model", "control", "user", "none"] = "none"
+
+    severity: Literal["info", "warning", "error"] = "info"
+    confidence: float = Field(..., ge=0.0, le=1.0)
+
+    summary: str = Field(..., description="One-sentence overall judgment")
+    fail_reasons: list[str] = Field(default_factory=list)
+    evidence: list[str] = Field(default_factory=list)
+
+    internal_feedback: str = Field(
+        default="",
+        description="Feedback for the upstream/downstream agent during retry"
+    )
+    user_feedback: str = Field(
+        default="",
+        description="Feedback that can be shown directly to the user when stopping"
+    )

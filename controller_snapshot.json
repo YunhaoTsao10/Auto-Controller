@@ -1,388 +1,61 @@
 {
   "spec": {
-    "scenario": "Model a simple pendulum and design a local PD stabilizing controller around theta = 2.5 rad.\nPlant:\nEquation of motion: m L^2 \u03b8\u00a8 + b \u03b8\u02d9 + m g L sin(\u03b8) = \u03c4\nParameters: m = 1 kg, L = 1 m, g = 9.81 m/s^2, b = 0.05\nOperating point: \u03b8 = 2.5 rad",
-    "constraints": [
-      {
-        "name": "operating_point_theta",
-        "value": "2.5",
-        "unit": "rad",
-        "kind": "hard"
-      },
-      {
-        "name": "mass",
-        "value": "1",
-        "unit": "kg",
-        "kind": "hard"
-      },
-      {
-        "name": "length",
-        "value": "1",
-        "unit": "m",
-        "kind": "hard"
-      },
-      {
-        "name": "gravity",
-        "value": "9.81",
-        "unit": "m/s^2",
-        "kind": "hard"
-      },
-      {
-        "name": "damping",
-        "value": "0.05",
-        "unit": "Nms",
-        "kind": "hard"
-      },
-      {
-        "name": "controller_type",
-        "value": "PD",
-        "unit": null,
-        "kind": "hard"
-      }
-    ],
+    "scenario": "User asks about weather today; no control scenario provided.",
+    "constraints": [],
     "urdf": null,
     "design_targets": {
       "dt_s": "0.01",
       "settle_time_s": "1.0",
-      "overshoot_pct": "1",
-      "torque_limit_nm": "unspecified",
-      "theta_range_rad": "local around 2.5"
+      "overshoot_pct": "5",
+      "torque_limit_nm": "1.0",
+      "theta_range_rad": "0.5"
     }
   },
   "strategy": {
-    "family": "PD",
-    "reason": "Requested local stabilization of a simple SISO pendulum around a fixed operating point; PD is appropriate and explicitly requested."
+    "family": "PID",
+    "reason": "No robotics/control task provided; default placeholder strategy."
   },
-  "model": {
-    "model_name": "Simple Pendulum",
-    "model_type": "nonlinear_ode",
-    "states": [
-      {
-        "name": "theta",
-        "meaning": "pendulum angle",
-        "unit": "rad"
-      },
-      {
-        "name": "omega",
-        "meaning": "pendulum angular velocity",
-        "unit": "rad/s"
-      }
-    ],
-    "inputs": [
-      {
-        "name": "tau",
-        "meaning": "applied pivot torque",
-        "unit": "N*m"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "theta",
-        "meaning": "pendulum angle",
-        "unit": "rad"
-      }
-    ],
-    "parameters": [
-      {
-        "name": "m",
-        "meaning": "pendulum mass",
-        "unit": "kg",
-        "value": "1",
-        "notes": "Given constant mass"
-      },
-      {
-        "name": "L",
-        "meaning": "pendulum length",
-        "unit": "m",
-        "value": "1",
-        "notes": "Given constant length"
-      },
-      {
-        "name": "g",
-        "meaning": "gravitational acceleration",
-        "unit": "m/s^2",
-        "value": "9.81",
-        "notes": "Standard gravity as specified"
-      },
-      {
-        "name": "b",
-        "meaning": "viscous damping coefficient",
-        "unit": "N*m*s",
-        "value": "0.05",
-        "notes": "Given damping at pivot"
-      }
-    ],
-    "assumptions": [
-      "Simple planar pendulum with point mass m at distance L from pivot",
-      "Rigid massless rod",
-      "Single torque input tau applied at pivot",
-      "Viscous damping torque proportional to angular velocity",
-      "Operating point is a static equilibrium at theta = 2.5 rad, requiring nonzero holding torque"
-    ],
-    "dynamics": [
-      {
-        "lhs": "theta_dot",
-        "rhs": "omega",
-        "notes": "Kinematic relation"
-      },
-      {
-        "lhs": "omega_dot",
-        "rhs": "(1/(m*L^2))*(tau - b*omega - m*g*L*sin(theta))",
-        "notes": "From m L^2 theta_ddot + b theta_dot + m g L sin(theta) = tau"
-      }
-    ],
-    "output_equations": [
-      {
-        "lhs": "y",
-        "rhs": "theta",
-        "notes": "Measured output is pendulum angle"
-      }
-    ],
-    "operating_point": {
-      "name": "theta_2p5_eq",
-      "kind": "equilibrium",
-      "state_values": [
-        {
-          "name": "theta",
-          "value": 2.5,
-          "unit": "rad",
-          "notes": "Required operating angle"
-        },
-        {
-          "name": "omega",
-          "value": 0.0,
-          "unit": "rad/s",
-          "notes": "Static equilibrium"
-        }
-      ],
-      "input_values": [
-        {
-          "name": "tau",
-          "value": 5.871269512811331,
-          "unit": "N*m",
-          "notes": "Holding torque tau_eq = m g L sin(2.5)"
-        }
-      ],
-      "output_values": [
-        {
-          "name": "theta",
-          "value": 2.5,
-          "unit": "rad",
-          "notes": "Output at equilibrium"
-        }
-      ],
-      "assumptions": [
-        "Static equilibrium with constant holding torque"
-      ],
-      "residual_description": "Exact equilibrium: tau_eq - m g L sin(theta_eq) = 0 and omega_eq = 0"
-    },
-    "local_linear_model": {
-      "valid_near": "theta_2p5_eq",
-      "state_order": [
-        "theta",
-        "omega"
-      ],
-      "input_order": [
-        "tau"
-      ],
-      "output_order": [
-        "theta"
-      ],
-      "state_definition": "Deviation states around operating point: delta_theta = theta - 2.5, delta_omega = omega - 0.",
-      "input_definition": "Deviation input around operating point: delta_tau = tau - 5.871269512811331.",
-      "output_definition": "Deviation output: delta_y = theta - 2.5.",
-      "feedback_coordinates": "deviation",
-      "final_control_law_template": "tau_phys = 5.871269512811331 + delta_tau",
-      "A": {
-        "rows": 2,
-        "cols": 2,
-        "data": [
-          [
-            0.0,
-            1.0
-          ],
-          [
-            7.858831108708945,
-            -0.05
-          ]
-        ]
-      },
-      "B": {
-        "rows": 2,
-        "cols": 1,
-        "data": [
-          [
-            0.0
-          ],
-          [
-            1.0
-          ]
-        ]
-      },
-      "C": {
-        "rows": 1,
-        "cols": 2,
-        "data": [
-          [
-            1.0,
-            0.0
-          ]
-        ]
-      },
-      "D": {
-        "rows": 1,
-        "cols": 1,
-        "data": [
-          [
-            0.0
-          ]
-        ]
-      },
-      "notes": [
-        "Linearization of omega_dot = tau - 0.05*omega - 9.81*sin(theta) using m = 1 and L = 1",
-        "Since cos(2.5) < 0, the local stiffness term in deviation coordinates is destabilizing open-loop"
-      ],
-      "assumptions": [
-        "Small deviations around theta = 2.5 rad",
-        "Parameters treated as constant"
-      ],
-      "sanity_checks": [
-        "A(2,1) = -(g/L) cos(theta_eq) = -9.81 cos(2.5) = 7.858831108708945",
-        "B(2,1) = 1/(m L^2) = 1",
-        "Operating point torque equals 9.81 sin(2.5) = 5.871269512811331"
-      ]
-    },
-    "controller_ready": {
-      "model_class": "second_order_siso",
-      "second_order": {
-        "valid": true,
-        "form": "delta_y_ddot + a1*delta_y_dot + a0*delta_y = b0*delta_u",
-        "y_name": "theta",
-        "ydot_name": "omega",
-        "y_index_in_state": 0,
-        "ydot_index_in_state": 1,
-        "a0": -7.858831108708945,
-        "a1": 0.05,
-        "b0": 1.0,
-        "assumptions": [
-          "Local model valid for small deviations around theta = 2.5 rad",
-          "Input is pivot torque deviation delta_tau"
-        ],
-        "notes": [
-          "From delta_theta_ddot = 7.858831108708945*delta_theta - 0.05*delta_omega + delta_tau, rearranged as delta_theta_ddot + 0.05*delta_theta_dot - 7.858831108708945*delta_theta = delta_tau"
-        ]
-      },
-      "notes": [
-        "Suitable local second-order SISO form for PD control design around the specified nonzero equilibrium"
-      ],
-      "assumptions": [
-        "Angle output theta is the controlled variable",
-        "Use deviation variables relative to the declared operating point"
-      ],
-      "sanity_checks": [
-        "Indices align with local_linear_model.state_order = [theta, omega]",
-        "Nonzero equilibrium torque is included explicitly"
-      ]
-    },
-    "ode": [
-      "theta_dot = omega",
-      "omega_dot = (tau - 0.05*omega - 9.81*sin(theta))"
-    ],
-    "state_space": [
-      "Nonlinear state x = [theta, omega]^T, input u = tau, output y = theta",
-      "Operating point: theta_eq = 2.5 rad, omega_eq = 0 rad/s, tau_eq = 5.871269512811331 N*m",
-      "Deviation variables: delta_x = [theta-2.5, omega-0]^T, delta_u = tau-5.871269512811331",
-      "delta_x_dot = A delta_x + B delta_u",
-      "A = [[0, 1], [7.858831108708945, -0.05]]",
-      "B = [[0], [1]]",
-      "C = [[1, 0]]",
-      "D = [[0]]",
-      "Second-order local form: delta_theta_ddot + 0.05 delta_theta_dot - 7.858831108708945 delta_theta = delta_tau"
-    ],
-    "notes": [
-      "The requested operating point theta = 2.5 rad is not a zero-torque equilibrium; constant bias torque is required.",
-      "Because theta_eq = 2.5 rad is near the inverted side of the pendulum where cos(theta_eq) < 0, the open-loop linearization has one unstable mode, making local PD stabilization meaningful."
-    ]
-  },
-  "controller": {
-    "controller_type": "PD",
-    "controller_name": null,
-    "required_signals": [
-      "theta_ref",
-      "theta",
-      "d(theta)/dt"
-    ],
-    "control_law": [
-      "e = theta_ref - theta",
-      "tau = 5.871270 + 31.304922*e - 7.950000*d(theta)/dt"
-    ],
-    "parameters": [
-      {
-        "name": "Kp",
-        "meaning": "proportional gain",
-        "unit": "controller-dependent",
-        "value": "31.304922",
-        "notes": "model-based tuning"
-      },
-      {
-        "name": "Ki",
-        "meaning": "integral gain",
-        "unit": "controller-dependent",
-        "value": "0.000000",
-        "notes": "0 for P/PD; heuristic initial value for PI/PID"
-      },
-      {
-        "name": "Kd",
-        "meaning": "derivative gain",
-        "unit": "controller-dependent",
-        "value": "7.950000",
-        "notes": "0 for P/PI"
-      },
-      {
-        "name": "u_eq",
-        "meaning": "equilibrium/bias input required to hold the operating point",
-        "unit": "same as control input",
-        "value": "5.871270",
-        "notes": "Add this feedforward term before the feedback correction."
-      }
-    ],
-    "assumptions": [
-      "Plant is approximated as a SISO second-order linear model near an operating point.",
-      "Canonical form used: G(s) = b0 / (s^2 + a1 s + a0).",
-      "This tuning is intended as an initial design and should be validated in simulation."
-    ],
-    "implementation_notes": [
-      "Controller form: parallel",
-      "Selected structure: PD",
-      "dt = 0.0100 s",
-      "Anti-windup: none",
-      "Derivative filter is intentionally omitted in this simplified version.",
-      "Target mapping (2% settling-time): zeta=0.826, wn=4.842 rad/s",
-      "Canonical coefficients used: a1=0.050000, a0=-7.858831, b0=1.000000",
-      "PD gains from exact second-order coefficient matching on the local deviation model."
-    ],
-    "designed_for_operating_point": null,
-    "designed_for_linear_model": null,
-    "uses_deviation_variables": null,
-    "state_order": [],
-    "input_order": [],
-    "physical_state_eq": [],
-    "physical_input_eq": []
-  },
+  "model": null,
+  "controller": null,
   "qc": [
     {
-      "step": "strategy(parse+plan)",
+      "step": "strategy",
+      "reviewer": "strategy_agent_self_report",
       "passed": true,
-      "notes": "PD"
+      "verdict": "pass",
+      "retry_target": "none",
+      "severity": "info",
+      "confidence": 0.9,
+      "summary": "Strategy generated with family=PID.",
+      "fail_reasons": [],
+      "evidence": [
+        "strategy.family=PID",
+        "strategy.reason=No robotics/control task provided; default placeholder strategy."
+      ],
+      "internal_feedback": "",
+      "user_feedback": ""
     },
     {
-      "step": "modeling",
-      "passed": true,
-      "notes": "Simple Pendulum"
-    },
-    {
-      "step": "control(PID+solve)",
-      "passed": true,
-      "notes": "PD numeric gains computed"
+      "step": "strategy",
+      "reviewer": "strategy_qc",
+      "passed": false,
+      "verdict": "stop",
+      "retry_target": "none",
+      "severity": "error",
+      "confidence": 0.99,
+      "summary": "The request is not a control-design task, so the extracted spec and PID strategy are out of scope and do not match user intent.",
+      "fail_reasons": [
+        "The raw request asks about today's weather, not about control-system design.",
+        "The extracted specification invents control-design targets unsupported by the user request.",
+        "The selected controller family is unrelated to the user's stated intent."
+      ],
+      "evidence": [
+        "Raw request: 'how is the weather today'",
+        "Extracted spec includes fabricated control parameters such as settle time, overshoot, torque limit, and theta range.",
+        "Selected strategy: PID with reason 'default placeholder strategy' despite no control scenario."
+      ],
+      "internal_feedback": "Do not convert non-control user queries into placeholder control problems. First verify that the user is actually asking for a control-design task; otherwise stop as out of scope.",
+      "user_feedback": "Your request asks about weather, but this workflow only supports control-design tasks. Please provide a plant/system and control objective if you want controller design help."
     }
   ]
 }

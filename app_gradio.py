@@ -40,17 +40,72 @@ def run_design(user_instruction: str, urdf_file: str | None):
     xml_text = None
     if urdf_file:
         xml_text = Path(urdf_file).read_text(encoding="utf-8", errors="ignore")
-
+        
         state = {
             "raw_request": user_instruction.strip() + "\n\nUploaded robot.xml content:\n" + xml_text,
             "urdf": urdf_file if urdf_file else None,
+
+            "spec": None,
+            "strategy": None,
+            "model": None,
+            "controller": None,
+
+            "qc": [],
+            "latest_qc": None,
+            "halt_reason": None,
+
+            "retry_counts": {
+                "strategy": 0,
+                "model": 0,
+                "control": 0,
+            },
+
+            "max_retries": {
+                "strategy": 1,
+                "model": 1,
+                "control": 1,
+            },
+
+            "revision_requests": {
+                "strategy": "",
+                "model": "",
+                "control": "",
+            },
         }
-    
     else:
         state = {
             "raw_request": user_instruction.strip(),
             "urdf": None,
+
+            "spec": None,
+            "strategy": None,
+            "model": None,
+            "controller": None,
+
+            "qc": [],
+            "latest_qc": None,
+            "halt_reason": None,
+
+            "retry_counts": {
+                "strategy": 0,
+                "model": 0,
+                "control": 0,
+            },
+
+            "max_retries": {
+                "strategy": 1,
+                "model": 1,
+                "control": 1,
+            },
+
+            "revision_requests": {
+                "strategy": "",
+                "model": "",
+                "control": "",
+            },
         }
+
+
 
     out = app.invoke(state)
     snapshot = _build_snapshot(out)

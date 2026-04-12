@@ -13,6 +13,8 @@ def modeling_agent(state: dict) -> dict:
     family = getattr(strategy, "family", None) if strategy else None
     family_text = family or "unknown"
 
+    revision_feedback = state.get("revision_requests", {}).get("model", "")
+
     system = (
         "You are a robotics/controls modeling engineer.\n"
         "Given a control scenario, produce a compact but usable dynamics model.\n"
@@ -70,6 +72,9 @@ def modeling_agent(state: dict) -> dict:
         "If ambiguous, choose the simplest reasonable model and list assumptions."
     )
 
+    if revision_feedback:
+        user += f"\nQC revision feedback:\n{revision_feedback}\n"
+
     resp = client.responses.parse(
         model=OPENAI_MODEL,
         input=[
@@ -81,5 +86,22 @@ def modeling_agent(state: dict) -> dict:
     model: DynamicsModel = resp.output_parsed
 
     state["model"] = model
-    state.setdefault("qc", []).append(QCReport(step="modeling", passed=True, notes=model.model_name))
+    state.setdefault("qc", []).append(
+        QCReport(
+            step="model",
+            reviewer="modeling_agent_self_report",
+            passed=True,
+            verdict="pass",
+            retry_target="none",
+            severity="info",
+            confidence=0.90,
+            summary=f"Model generated: {model.model_name}",
+            fail_reasons=[],
+            evidence=[
+                f"model_name={model.model_name}",
+            ],
+            internal_feedback="",
+            user_feedback="",
+        )
+    )
     return state
