@@ -390,6 +390,7 @@ DEFAULT_PROMPT = (
 # - Treat this as a multi-input multi-state spacecraft control problem.
 # - Do not collapse it into a SISO second-order template.
 # - If needed, make clearly stated small-angle and local-linearity assumptions near the target state.
+# - Do not add internal wheel-speed states unless they are modeled consistently and fully in A and B.
 
 
 

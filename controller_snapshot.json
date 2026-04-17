@@ -1,22 +1,404 @@
 {
   "spec": {
-    "scenario": "User asks about weather today; no control scenario provided.",
-    "constraints": [],
+    "scenario": "Simple pendulum local stabilization about theta = 2.5 rad.\nPlant: m L^2 * theta_ddot + b * theta_dot + m g L * sin(theta) = u\nParameters: m = 1 kg, L = 1 m, g = 9.81 m/s^2, b = 0.05\nEquilibrium/reference: theta_ref = 2.5 rad, theta_dot_ref = 0 rad/s",
+    "constraints": [
+      {
+        "name": "mass",
+        "value": "1",
+        "unit": "kg",
+        "kind": "hard"
+      },
+      {
+        "name": "length",
+        "value": "1",
+        "unit": "m",
+        "kind": "hard"
+      },
+      {
+        "name": "gravity",
+        "value": "9.81",
+        "unit": "m/s^2",
+        "kind": "hard"
+      },
+      {
+        "name": "damping",
+        "value": "0.05",
+        "unit": "Nms/rad",
+        "kind": "hard"
+      },
+      {
+        "name": "local_operating_point",
+        "value": "theta = 2.5",
+        "unit": "rad",
+        "kind": "hard"
+      },
+      {
+        "name": "controller_structure",
+        "value": "PD",
+        "unit": null,
+        "kind": "hard"
+      }
+    ],
     "urdf": null,
     "design_targets": {
       "dt_s": "0.01",
       "settle_time_s": "1.0",
-      "overshoot_pct": "5",
-      "torque_limit_nm": "1.0",
-      "theta_range_rad": "0.5"
+      "overshoot_pct": "1",
+      "torque_limit_nm": "10",
+      "theta_range_rad": "local neighborhood of 2.5 rad"
     }
   },
   "strategy": {
-    "family": "PID",
-    "reason": "No robotics/control task provided; default placeholder strategy."
+    "family": "PD",
+    "reason": "User explicitly requests local PD stabilization for a simple pendulum around a fixed operating point."
   },
-  "model": null,
-  "controller": null,
+  "model": {
+    "model_name": "Simple Pendulum",
+    "model_type": "nonlinear_ode",
+    "states": [
+      {
+        "name": "theta",
+        "meaning": "pendulum angle",
+        "unit": "rad"
+      },
+      {
+        "name": "omega",
+        "meaning": "pendulum angular velocity",
+        "unit": "rad/s"
+      }
+    ],
+    "inputs": [
+      {
+        "name": "u",
+        "meaning": "applied joint torque",
+        "unit": "N\u00b7m"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "theta",
+        "meaning": "pendulum angle",
+        "unit": "rad"
+      }
+    ],
+    "parameters": [
+      {
+        "name": "m",
+        "meaning": "pendulum mass",
+        "unit": "kg",
+        "value": "1",
+        "notes": "hard constraint"
+      },
+      {
+        "name": "L",
+        "meaning": "pendulum length",
+        "unit": "m",
+        "value": "1",
+        "notes": "hard constraint"
+      },
+      {
+        "name": "g",
+        "meaning": "gravitational acceleration",
+        "unit": "m/s^2",
+        "value": "9.81",
+        "notes": "hard constraint"
+      },
+      {
+        "name": "b",
+        "meaning": "viscous rotational damping",
+        "unit": "N\u00b7m\u00b7s/rad",
+        "value": "0.05",
+        "notes": "hard constraint"
+      }
+    ],
+    "assumptions": [
+      "Single rigid pendulum with point mass at distance L from pivot.",
+      "Actuation is direct torque at the pivot.",
+      "Motion is planar.",
+      "No Coulomb friction or actuator dynamics.",
+      "Local stabilization is intended about the constant reference theta = 2.5 rad, omega = 0 rad/s.",
+      "A constant equilibrium torque is required to hold this nonzero angle against gravity."
+    ],
+    "dynamics": [
+      {
+        "lhs": "theta_dot",
+        "rhs": "omega",
+        "notes": "kinematic state equation"
+      },
+      {
+        "lhs": "omega_dot",
+        "rhs": "(u - b*omega - m*g*L*sin(theta)) / (m*L^2)",
+        "notes": "from m L^2 theta_ddot + b theta_dot + m g L sin(theta) = u"
+      }
+    ],
+    "output_equations": [
+      {
+        "lhs": "y",
+        "rhs": "theta",
+        "notes": "measured/output angle"
+      }
+    ],
+    "operating_point": {
+      "name": "theta_2p5_eq",
+      "kind": "equilibrium",
+      "state_values": [
+        {
+          "name": "theta",
+          "value": 2.5,
+          "unit": "rad",
+          "notes": "requested local operating point"
+        },
+        {
+          "name": "omega",
+          "value": 0.0,
+          "unit": "rad/s",
+          "notes": "equilibrium angular velocity"
+        }
+      ],
+      "input_values": [
+        {
+          "name": "u",
+          "value": 5.871269512811331,
+          "unit": "N\u00b7m",
+          "notes": "u_eq = m g L sin(2.5)"
+        }
+      ],
+      "output_values": [
+        {
+          "name": "theta",
+          "value": 2.5,
+          "unit": "rad",
+          "notes": "output at equilibrium"
+        }
+      ],
+      "assumptions": [
+        "Equilibrium is maintained by constant torque balancing gravity.",
+        "Reference is constant, not time-varying."
+      ],
+      "residual_description": "Exact equilibrium: omega_dot = 0 because u_eq - m g L sin(theta_eq) = 0 and omega_eq = 0."
+    },
+    "local_linear_model": {
+      "valid_near": "theta_2p5_eq",
+      "state_order": [
+        "theta",
+        "omega"
+      ],
+      "input_order": [
+        "u"
+      ],
+      "output_order": [
+        "theta"
+      ],
+      "state_definition": "Deviation coordinates about the operating point: delta_theta = theta - 2.5, delta_omega = omega - 0.",
+      "input_definition": "Deviation input about the operating point: delta_u = u - 5.871269512811331.",
+      "output_definition": "Deviation output: delta_y = theta - 2.5.",
+      "feedback_coordinates": "deviation",
+      "final_control_law_template": "u_phys = 5.871269512811331 + delta_u",
+      "A": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          [
+            0.0,
+            1.0
+          ],
+          [
+            7.858872607769481,
+            -0.05
+          ]
+        ]
+      },
+      "B": {
+        "rows": 2,
+        "cols": 1,
+        "data": [
+          [
+            0.0
+          ],
+          [
+            1.0
+          ]
+        ]
+      },
+      "C": {
+        "rows": 1,
+        "cols": 2,
+        "data": [
+          [
+            1.0,
+            0.0
+          ]
+        ]
+      },
+      "D": {
+        "rows": 1,
+        "cols": 1,
+        "data": [
+          [
+            0.0
+          ]
+        ]
+      },
+      "notes": [
+        "Linearization uses sin(theta) \u2248 sin(theta_eq) + cos(theta_eq) (theta - theta_eq).",
+        "Because cos(2.5) < 0, the linearized stiffness term is destabilizing: A(2,1) = -(g/L) cos(2.5) = 7.858872607769481."
+      ],
+      "assumptions": [
+        "Small deviations around theta = 2.5 rad.",
+        "Parameters are exactly m=1, L=1, g=9.81, b=0.05."
+      ],
+      "sanity_checks": [
+        "Matrix dimensions match state_order and input_order.",
+        "At the operating point, physical input equals u_eq = 5.871269512811331 N\u00b7m.",
+        "Deviation dynamics are delta_x_dot = A delta_x + B delta_u."
+      ]
+    },
+    "controller_ready": {
+      "model_class": "second_order_siso",
+      "second_order": {
+        "valid": true,
+        "form": "delta_y_ddot + a1*delta_y_dot + a0*delta_y = b0*delta_u",
+        "y_name": "theta",
+        "ydot_name": "omega",
+        "y_index_in_state": 0,
+        "ydot_index_in_state": 1,
+        "a0": -7.858872607769481,
+        "a1": 0.05,
+        "b0": 1.0,
+        "assumptions": [
+          "Local deviation model around theta = 2.5 rad, omega = 0 rad/s.",
+          "Output is pendulum angle and input is applied torque.",
+          "mL^2 = 1, so input gain is exactly 1."
+        ],
+        "notes": [
+          "Canonical local model: delta_theta_ddot + 0.05 delta_theta_dot - 7.858872607769481 delta_theta = delta_u.",
+          "Suitable for local PD design in deviation coordinates with equilibrium torque bias added back to form the physical input."
+        ]
+      },
+      "notes": [
+        "Plant is locally representable as a second-order SISO system for PD control.",
+        "Nonzero equilibrium torque must be included in implementation."
+      ],
+      "assumptions": [
+        "Use deviation variables for controller design.",
+        "Reference is a fixed operating point, not a trajectory."
+      ],
+      "sanity_checks": [
+        "Indices 0 and 1 correspond to theta and omega in local_linear_model.state_order.",
+        "Second-order coefficients match the linearized pendulum dynamics about theta = 2.5 rad."
+      ]
+    },
+    "ode": [
+      "theta_dot = omega",
+      "omega_dot = (u - 0.05*omega - 9.81*sin(theta))"
+    ],
+    "state_space": [
+      "Operating point: theta_eq = 2.5 rad, omega_eq = 0 rad/s, u_eq = 5.871269512811331 N\u00b7m",
+      "Deviation states: delta_x = [delta_theta, delta_omega]^T with delta_theta = theta - 2.5, delta_omega = omega",
+      "Deviation input: delta_u = u - 5.871269512811331",
+      "delta_x_dot = A delta_x + B delta_u",
+      "A = [[0, 1], [7.858872607769481, -0.05]]",
+      "B = [[0], [1]]",
+      "C = [[1, 0]]",
+      "D = [[0]]",
+      "Equivalent second-order form: delta_theta_ddot + 0.05*delta_theta_dot - 7.858872607769481*delta_theta = delta_u"
+    ],
+    "notes": [
+      "The requested operating point theta = 2.5 rad is not a natural hanging equilibrium without input torque; it is a torque-balanced equilibrium.",
+      "Since 2.5 rad is near the inverted side of the pendulum and cos(2.5) is negative, the local open-loop linearization is unstable.",
+      "For PD implementation around the reference, use the equilibrium torque offset u_eq in addition to the PD action computed on deviation variables."
+    ]
+  },
+  "controller": {
+    "controller_type": "PD",
+    "controller_name": null,
+    "required_signals": [
+      "theta",
+      "omega"
+    ],
+    "control_law": [
+      "e = theta_ref - theta",
+      "u = 5.871270 + 31.304964*e - 7.950000*d(theta)/dt"
+    ],
+    "parameters": [
+      {
+        "name": "Kp",
+        "meaning": "proportional gain",
+        "unit": "controller-dependent",
+        "value": "31.304964",
+        "notes": "model-based tuning"
+      },
+      {
+        "name": "Ki",
+        "meaning": "integral gain",
+        "unit": "controller-dependent",
+        "value": "0.000000",
+        "notes": "0 for P/PD; heuristic initial value for PI/PID Unused for PD."
+      },
+      {
+        "name": "Kd",
+        "meaning": "derivative gain",
+        "unit": "controller-dependent",
+        "value": "7.950000",
+        "notes": "0 for P/PI"
+      },
+      {
+        "name": "u_eq",
+        "meaning": "equilibrium/bias input required to hold the operating point",
+        "unit": "same as control input",
+        "value": "5.871270",
+        "notes": "Add this feedforward term before the feedback correction."
+      }
+    ],
+    "assumptions": [
+      "Plant is approximated as a SISO second-order linear model near an operating point.",
+      "Canonical form used: G(s) = b0 / (s^2 + a1 s + a0).",
+      "This tuning is intended as an initial design and should be validated in simulation."
+    ],
+    "implementation_notes": [
+      "Controller form: parallel",
+      "Selected structure: PD",
+      "dt = 0.0100 s",
+      "Anti-windup: none",
+      "Derivative filter is intentionally omitted in this simplified version.",
+      "Apply saturation: |u| <= 10.000000",
+      "Target mapping (2% settling-time): zeta=0.826, wn=4.842 rad/s",
+      "Canonical coefficients used: a1=0.050000, a0=-7.858873, b0=1.000000",
+      "PD gains from exact second-order coefficient matching on the local deviation model."
+    ],
+    "designed_for_operating_point": "theta_2p5_eq",
+    "designed_for_linear_model": "theta_2p5_eq",
+    "uses_deviation_variables": true,
+    "state_order": [
+      "theta",
+      "omega"
+    ],
+    "input_order": [
+      "u"
+    ],
+    "physical_state_eq": [
+      {
+        "name": "theta",
+        "value": 2.5,
+        "unit": "rad",
+        "notes": "requested local operating point"
+      },
+      {
+        "name": "omega",
+        "value": 0.0,
+        "unit": "rad/s",
+        "notes": "equilibrium angular velocity"
+      }
+    ],
+    "physical_input_eq": [
+      {
+        "name": "u",
+        "value": 5.871269512811331,
+        "unit": "N\u00b7m",
+        "notes": "u_eq = m g L sin(2.5)"
+      }
+    ]
+  },
   "qc": [
     {
       "step": "strategy",
@@ -26,11 +408,11 @@
       "retry_target": "none",
       "severity": "info",
       "confidence": 0.9,
-      "summary": "Strategy generated with family=PID.",
+      "summary": "Strategy generated with family=PD.",
       "fail_reasons": [],
       "evidence": [
-        "strategy.family=PID",
-        "strategy.reason=No robotics/control task provided; default placeholder strategy."
+        "strategy.family=PD",
+        "strategy.reason=User explicitly requests local PD stabilization for a simple pendulum around a fixed operating point."
       ],
       "internal_feedback": "",
       "user_feedback": ""
@@ -38,24 +420,142 @@
     {
       "step": "strategy",
       "reviewer": "strategy_qc",
-      "passed": false,
-      "verdict": "stop",
+      "passed": true,
+      "verdict": "pass",
       "retry_target": "none",
+      "severity": "warning",
+      "confidence": 0.96,
+      "summary": "The extracted spec matches the user's request and the selected PD controller family is appropriate for local stabilization about the specified operating point.",
+      "fail_reasons": [],
+      "evidence": [
+        "User explicitly requested a simple pendulum model and a local PD stabilizing controller around theta = 2.5 rad.",
+        "Plant equation and parameters m=1 kg, L=1 m, g=9.81 m/s^2, and damping b=0.05 are correctly captured.",
+        "Performance targets of less than 1% overshoot and settling time around 1 s are represented.",
+        "Selected controller family is PD, which directly matches the user's requested controller structure.",
+        "Although the strategy does not explicitly mention equilibrium torque/bias input or deviation-coordinate linearization around the nonzero operating point theta = 2.5 rad, downstream modeling/control stages can reliably infer and handle this for local design."
+      ],
+      "internal_feedback": "Proceed with local modeling around theta=2.5 rad, including the nonzero equilibrium input u_eq = m g L sin(theta_ref) and deviation-coordinate linearization. Verify local stabilizability since theta_ref = 2.5 rad lies on the upper-half branch where cos(theta_ref) < 0, so the open-loop linearization is unstable and requires active stabilization. Treat listed dt and torque limit as secondary assumptions unless explicitly required by later stages.",
+      "user_feedback": ""
+    },
+    {
+      "step": "model",
+      "reviewer": "modeling_agent_self_report",
+      "passed": true,
+      "verdict": "pass",
+      "retry_target": "none",
+      "severity": "info",
+      "confidence": 0.9,
+      "summary": "Model generated: Simple Pendulum",
+      "fail_reasons": [],
+      "evidence": [
+        "model_name=Simple Pendulum"
+      ],
+      "internal_feedback": "",
+      "user_feedback": ""
+    },
+    {
+      "step": "model",
+      "reviewer": "QC-Agent",
+      "passed": true,
+      "verdict": "pass",
+      "retry_target": "none",
+      "severity": "info",
+      "confidence": 0.98,
+      "summary": "The model is internally consistent, linearized at the requested operating point, and provides the operating-point offset plus deviation-coordinate state-space form needed for downstream PD synthesis.",
+      "fail_reasons": [],
+      "evidence": [
+        "The nonlinear dynamics match the stated plant equation: theta_dot = omega and omega_dot = (u - b*omega - m*g*L*sin(theta))/(m*L^2) with m=L=1 giving omega_dot = u - 0.05*omega - 9.81*sin(theta).",
+        "The operating point is explicitly defined at the requested theta = 2.5 rad, omega = 0 rad/s, with equilibrium torque u_eq = 9.81*sin(2.5) = 5.871269512811331 N\u00b7m.",
+        "Deviation coordinates are clearly specified: delta_theta = theta - 2.5, delta_omega = omega, delta_u = u - 5.871269512811331.",
+        "The local linearization is consistent with the requested operating point: A = [[0,1], [-(g/L)cos(2.5), -b/(mL^2)]] = [[0,1],[7.858872607769481,-0.05]], B = [[0],[1]], C = [[1,0]], D = [[0]].",
+        "State, input, and output ordering are explicit and dimensionally consistent for downstream synthesis.",
+        "The controller-oriented second-order form is provided explicitly: delta_theta_ddot + 0.05*delta_theta_dot - 7.858872607769481*delta_theta = delta_u, which is sufficient for local PD design.",
+        "The model correctly notes that implementation must include the equilibrium torque bias, which is critical for stabilization about a nonzero angle."
+      ],
+      "internal_feedback": "",
+      "user_feedback": ""
+    },
+    {
+      "step": "control",
+      "reviewer": "control_agent_self_report",
+      "passed": true,
+      "verdict": "pass",
+      "retry_target": "none",
+      "severity": "info",
+      "confidence": 0.9,
+      "summary": "PD controller synthesized successfully.",
+      "fail_reasons": [],
+      "evidence": [
+        "family=PD",
+        "controller_type=PD",
+        "PID-family numeric gains computed successfully."
+      ],
+      "internal_feedback": "",
+      "user_feedback": ""
+    },
+    {
+      "step": "control",
+      "reviewer": "Control QC",
+      "passed": false,
+      "verdict": "retry",
+      "retry_target": "control",
       "severity": "error",
-      "confidence": 0.99,
-      "summary": "The request is not a control-design task, so the extracted spec and PID strategy are out of scope and do not match user intent.",
+      "confidence": 0.98,
+      "summary": "The controller is the correct PD family and includes the needed equilibrium bias, but the implemented derivative term has an inconsistent sign relative to the stated error definition and the model-based PD design.",
       "fail_reasons": [
-        "The raw request asks about today's weather, not about control-system design.",
-        "The extracted specification invents control-design targets unsupported by the user request.",
-        "The selected controller family is unrelated to the user's stated intent."
+        "With e = theta_ref - theta, a stabilizing PD law in physical coordinates should be u = u_eq + Kp*e - Kd*d(theta)/dt only if d(theta)/dt = omega and the equivalent deviation law is delta_u = -Kp*delta_theta - Kd*delta_omega; however substituting e = -delta_theta gives delta_u = -Kp*delta_theta - 7.95*omega only if the derivative term is explicitly tied to omega, while the presented sign convention is ambiguous and inconsistent with standard PD-on-error notation.",
+        "The package states uses_deviation_variables=true, but the published control law is not written in deviation form and does not clearly reconcile the derivative term with the chosen error coordinate; this creates implementation ambiguity at a local nonzero equilibrium.",
+        "Given the unstable local linearization about theta = 2.5 rad, any derivative-sign ambiguity is critical because the wrong implementation would reduce damping or destabilize the loop."
       ],
       "evidence": [
-        "Raw request: 'how is the weather today'",
-        "Extracted spec includes fabricated control parameters such as settle time, overshoot, torque limit, and theta range.",
-        "Selected strategy: PID with reason 'default placeholder strategy' despite no control scenario."
+        "Model-ready local form: delta_theta_ddot + 0.05 delta_theta_dot - 7.858872607769481 delta_theta = delta_u.",
+        "For PD on deviation variables, exact coefficient matching gives delta_u = -Kp*delta_theta - Kd*delta_omega with Kp = 31.304964 and Kd = 7.95.",
+        "Equivalent physical-coordinate implementation should be stated clearly as either u = u_eq - Kp*(theta - 2.5) - Kd*omega or u = u_eq + Kp*(2.5 - theta) - Kd*omega.",
+        "Submitted law uses e = theta_ref - theta and u = 5.871270 + 31.304964*e - 7.950000*d(theta)/dt, mixing error notation with a raw-state derivative term without explicitly identifying d(theta)/dt as omega in the same sign convention."
       ],
-      "internal_feedback": "Do not convert non-control user queries into placeholder control problems. First verify that the user is actually asking for a control-design task; otherwise stop as out of scope.",
-      "user_feedback": "Your request asks about weather, but this workflow only supports control-design tasks. Please provide a plant/system and control objective if you want controller design help."
+      "internal_feedback": "Keep the same PD gains and equilibrium torque. Repair the control law presentation so it is unambiguous and internally consistent with the local model. Preferred forms: (1) deviation form: delta_u = -31.304964*(theta-2.5) - 7.95*omega; u = 5.871269512811331 + delta_u. Or (2) reference form: e = 2.5 - theta, e_dot = -omega, u = 5.871269512811331 + 31.304964*e + 7.95*e_dot, equivalently u = 5.871269512811331 + 31.304964*e - 7.95*omega. Also align uses_deviation_variables with the presented law and, if keeping d(theta)/dt notation, explicitly state d(theta)/dt = omega.",
+      "user_feedback": "The PD design is close, but the derivative term needs to be rewritten more clearly to avoid sign ambiguity. Please restate the controller either in deviation variables or with explicit e_dot = -omega so the implementation is unambiguous."
+    },
+    {
+      "step": "control",
+      "reviewer": "control_agent_self_report",
+      "passed": true,
+      "verdict": "pass",
+      "retry_target": "none",
+      "severity": "info",
+      "confidence": 0.9,
+      "summary": "PD controller synthesized successfully.",
+      "fail_reasons": [],
+      "evidence": [
+        "family=PD",
+        "controller_type=PD",
+        "PID-family numeric gains computed successfully."
+      ],
+      "internal_feedback": "",
+      "user_feedback": ""
+    },
+    {
+      "step": "control",
+      "reviewer": "Control QC",
+      "passed": false,
+      "verdict": "retry",
+      "retry_target": "control",
+      "severity": "error",
+      "confidence": 0.97,
+      "summary": "The controller family and gains are plausible, but the implemented control law has a derivative sign inconsistency relative to the stated PD/deviation design and would destabilize velocity feedback interpretation.",
+      "fail_reasons": [
+        "The control law uses e = theta_ref - theta but then writes u = u_eq + Kp*e - Kd*d(theta)/dt, which makes the derivative action equivalent to +Kd*omega in deviation coordinates instead of the required damping term -Kd*omega.",
+        "This creates a true sign-convention contradiction between the stated PD design intent, the model's local second-order form, and the written implementable equation.",
+        "The package says uses_deviation_variables=true, but the presented law is not a consistent deviation-coordinate realization unless the derivative is taken on error, i.e. de/dt = -omega."
+      ],
+      "evidence": [
+        "Model-ready local form: delta_theta_ddot + 0.05 delta_theta_dot - 7.858872607769481 delta_theta = delta_u.",
+        "For local PD around the equilibrium, a consistent implementation is delta_u = -Kp*delta_theta - Kd*delta_omega, equivalently u = u_eq + Kp*(theta_ref-theta) - Kd*omega.",
+        "With e = theta_ref - theta and omega = d(theta)/dt, the derivative on error is de/dt = -omega, so a standard PD law u = u_eq + Kp*e + Kd*de/dt becomes u = u_eq + Kp*e - Kd*omega only if the derivative term is explicitly on error.",
+        "The submitted law writes '- 7.95*d(theta)/dt' while also claiming Kd = 7.95; interpreted directly in the plant coordinates this is not the same as the coefficient-matched deviation law expected from the model/strategy documentation."
+      ],
+      "internal_feedback": "Keep the PD family and gains if desired, but rewrite the law with unambiguous signal/sign conventions. Acceptable forms include: (1) u = u_eq - Kp*(theta-2.5) - Kd*omega, or equivalently (2) e = 2.5 - theta, e_dot = -omega, u = u_eq + Kp*e + Kd*e_dot. Also align uses_deviation_variables with the written form and optionally state omega = d(theta)/dt explicitly.",
+      "user_feedback": "The controller is close, but the derivative term is written with an inconsistent sign convention. Please restate the PD law so the damping term is unambiguous, e.g. using either deviation variables or error plus error-derivative consistently."
     }
   ]
 }

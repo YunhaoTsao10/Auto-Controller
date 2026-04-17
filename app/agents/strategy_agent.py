@@ -13,7 +13,7 @@ def strategy_agent(state: dict) -> dict:
         "1) Parse the user's request into a Spec.\n"
         "2) Choose a suitable controller family (Strategy).\n\n"
         "Rules:\n"
-        "- If the user provides an explicit plant model (transfer function G(s), ODE, or state-space), you MUST preserve it verbatim inside spec.scenario (e.g., under a 'Plant:' section). Do NOT replace it with a generic description.\n"
+        "- If the user provides an explicit plant model (transfer function G(s), ODE, or state-space), you MUST preserve it accurately inside spec.scenario (e.g., under a 'Plant:' section). Do NOT replace it with a generic description.\n"
         "- constraints must be a LIST of objects with keys: name, value, unit(optional), kind.\n"
         "- If no URDF path is provided, set spec.urdf = null.\n"
         "- Keep strategy.reason concise.\n"

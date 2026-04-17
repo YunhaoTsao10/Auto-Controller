@@ -220,12 +220,24 @@ def _build_lqr_controller_from_spec(model: DynamicsModel, lqr: LQRSpec) -> Contr
 
     input_order = lqr.input_order or ([lqr.input_name] if lqr.input_name else [])
     if not input_order:
-        input_order = [v.name for v in model.inputs]
+        if model.local_linear_model is not None and model.local_linear_model.input_order:
+            input_order = model.local_linear_model.input_order
+        else:
+            input_order = [v.name for v in model.inputs]
+
     if len(input_order) != m:
         raise ValueError("LQRSpec input_order length must match B/R input dimension.")
+
+    physical_input_names = [v.name for v in model.inputs]
+    local_input_names = []
+    if model.local_linear_model is not None and model.local_linear_model.input_order:
+        local_input_names = list(model.local_linear_model.input_order)
+
     for nm in input_order:
-        if nm not in [v.name for v in model.inputs]:
-            raise ValueError(f"LQRSpec input '{nm}' not found in model inputs.")
+        if nm not in physical_input_names and nm not in local_input_names:
+            raise ValueError(
+                f"LQRSpec input '{nm}' not found in either model.inputs or model.local_linear_model.input_order."
+            )
 
     K = solve_lqr(
         A=lqr.A.data,
