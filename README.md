@@ -347,11 +347,16 @@ This benchmark should be interpreted as a local stabilization and validation dem
 
 | Benchmark | Controller |  Demo |
 |---|---|---|
-| Single Pendulum | PD | ![Single Pendulum PD](assets/gifs/pendulum_pd.gif) |
-| Single Pendulum | LQR | ![Single Pendulum LQR](assets/gifs/pendulum_lqr.gif) |
-| Mass-Spring-Damper | PD | ![Mass Spring Damper PD](assets/gifs/msd_pd.gif) |
-| Mass-Spring-Damper | LQR | ![Mass Spring Damper LQR](assets/gifs/msd_lqr.gif) |
-| Space Robot | LQR | ![Space Robot LQR](assets/gifs/space_robot_lqr.gif) |
+| Single Pendulum | PD | <img width="384" height="240" alt="1" src="https://github.com/user-attachments/assets/e89bd92e-e3dd-4671-a4e6-84c97c0e2c54" />
+|
+| Single Pendulum | LQR | <img width="384" height="240" alt="2" src="https://github.com/user-attachments/assets/0fedc403-2f77-4e9e-80ed-553e1ccd1625" />
+|
+| Mass-Spring-Damper | PD | <img width="384" height="240" alt="3" src="https://github.com/user-attachments/assets/e89110c5-14a2-4289-b8c5-0234e13c731a" />
+ |
+| Mass-Spring-Damper | LQR |<img width="384" height="240" alt="4" src="https://github.com/user-attachments/assets/3c9ab3de-d90b-4df9-89f2-34c6a6bba8ea" />
+|
+| Space Robot | LQR |<img width="384" height="240" alt="5" src="https://github.com/user-attachments/assets/a3651b78-bf62-494a-91be-8b01eaf448b9" />
+ |
 
 ---
 
