@@ -363,7 +363,7 @@ This repository is intentionally focused on a small, reliable set of cases.
 
 - Natural-language-to-structured-control-design workflow.
 - PD/PID-family design for second-order SISO mechanical systems.
-- Continuous-time LQR for controller-ready local linear models.
+- Continuous-time LQR for local linear models.
 - Single pendulum benchmark.
 - Mass-spring-damper benchmark.
 - MuJoCo free-floating robot local LQR demo under small-angle assumptions.
@@ -372,9 +372,7 @@ This repository is intentionally focused on a small, reliable set of cases.
 ### Not fully supported yet
 
 - Global nonlinear control guarantees.
-- Large-angle global attitude control for the space robot.
 - Robust control, MPC, CBF, adaptive control, or learning-based control.
-
 - Fully automated benchmark generation for arbitrary plants.
 
 ---
